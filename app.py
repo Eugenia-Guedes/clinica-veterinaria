@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from extensions import db
 from models.usuario import Usuario
+from routes.usuarios import usuarios_bp
 
 app = Flask(__name__)
 
@@ -11,6 +12,8 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///clinica.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db.init_app(app)
+
+app.register_blueprint(usuarios_bp)
 
 
 @app.route("/")
