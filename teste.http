@@ -11,3 +11,49 @@ Content-Type: application/json
 ###
 
 GET http://127.0.0.1:5000/usuarios
+
+###
+
+GET http://127.0.0.1:5000/usuarios/1
+
+###
+
+PUT http://127.0.0.1:5000/usuarios/1
+Content-Type: application/json
+
+{
+    "nome": "Maria Oliveira",
+    "telefone": "83988888888"
+}
+
+###
+
+POST http://127.0.0.1:5000/usuarios
+Content-Type: application/json
+
+{
+    "nome": "João Teste",
+    "email": "joao@teste.com",
+    "telefone": "83999999999",
+    "senha": "123456"
+}
+
+###
+
+POST http://127.0.0.1:5000/login
+Content-Type: application/json
+
+{
+    "email": "maria@email.com",
+    "senha": "123456"
+}
+
+###
+
+POST http://127.0.0.1:5000/login
+Content-Type: application/json
+
+{
+    "email": "maria@email.com",
+    "senha": "senhaerrada"
+}
