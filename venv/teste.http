@@ -1,0 +1,13 @@
+POST http://127.0.0.1:5000/usuarios
+Content-Type: application/json
+
+{
+    "nome": "Maria Silva",
+    "email": "maria@email.com",
+    "telefone": "83999999999",
+    "senha": "123456"
+}
+
+###
+
+GET http://127.0.0.1:5000/usuarios

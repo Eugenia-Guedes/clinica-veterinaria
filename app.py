@@ -2,7 +2,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from extensions import db
 from models.usuario import Usuario
-from routes.usuarios import usuarios_bp
+from routes.routes.usuarios import usuarios_bp
 
 app = Flask(__name__)
 
