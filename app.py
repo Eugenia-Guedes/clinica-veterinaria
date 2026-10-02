@@ -5,6 +5,8 @@ from models.usuario import Usuario
 from models.veterinario import Veterinario
 from routes.routes.usuarios import usuarios_bp
 from routes.routes.veterinarios import veterinarios_bp
+from models.pet import Pet
+from routes.routes.pets import pets_bp
 
 app = Flask(__name__)
 
@@ -17,6 +19,7 @@ db.init_app(app)
 
 app.register_blueprint(usuarios_bp)
 app.register_blueprint(veterinarios_bp)
+app.register_blueprint(pets_bp)
 
 
 @app.route("/")
