@@ -1,0 +1,140 @@
+# =========================================
+# TESTES DE DISPONIBILIDADE
+# # Pré-requisito: banco vazio (rodar na ordem)
+# =========================================
+
+
+# ---------- CASOS DE SUCESSO ----------
+
+### 1. Criar disponibilidade na segunda (esperado: 201)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1,
+    "dia_semana": "segunda",
+    "hora_inicio": "08:00",
+    "hora_fim": "17:00"
+}
+
+### 2. Criar disponibilidade na quarta (esperado: 201)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1,
+    "dia_semana": "quarta",
+    "hora_inicio": "08:00",
+    "hora_fim": "12:00"
+}
+
+### 3. Criar com maiúscula, acento e hora sem zero (esperado: 201, salva "terca" e "08:00")
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1,
+    "dia_semana": "Terça",
+    "hora_inicio": "8:00",
+    "hora_fim": "12:00"
+}
+
+### 4. Listar todas (esperado: 200)
+GET http://127.0.0.1:5000/disponibilidade
+
+### 5. Listar do veterinário 1 (esperado: 200)
+GET http://127.0.0.1:5000/disponibilidade?veterinario_id=1
+
+### 6. Buscar por id (esperado: 200)
+GET http://127.0.0.1:5000/disponibilidade/1
+
+### 7. Atualizar horários (esperado: 200)
+PUT http://127.0.0.1:5000/disponibilidade/1
+Content-Type: application/json
+
+{
+    "hora_inicio": "09:00",
+    "hora_fim": "18:00"
+}
+
+### 8. Verificar horário dentro da disponibilidade (esperado: 200, disponivel true)
+# 2026-10-05 é segunda-feira
+GET http://127.0.0.1:5000/disponibilidade/verificar?veterinario_id=1&data=2026-10-05&hora=10:00
+
+### 9. Verificar horário fora da disponibilidade (esperado: 200, disponivel false)
+GET http://127.0.0.1:5000/disponibilidade/verificar?veterinario_id=1&data=2026-10-05&hora=18:00
+
+
+# ---------- CASOS DE ERRO ----------
+
+### 10. Criar sem campos obrigatórios (esperado: 400)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1
+}
+
+### 11. Criar com veterinario_id em texto (esperado: 400)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": "Laura",
+    "dia_semana": "segunda",
+    "hora_inicio": "08:00",
+    "hora_fim": "17:00"
+}
+
+### 12. Criar com horário de início depois do fim (esperado: 400)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1,
+    "dia_semana": "quinta",
+    "hora_inicio": "17:00",
+    "hora_fim": "08:00"
+}
+
+### 13. Criar com dia da semana inválido (esperado: 400)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1,
+    "dia_semana": "feriado",
+    "hora_inicio": "08:00",
+    "hora_fim": "17:00"
+}
+
+### 14. Criar duplicada no mesmo dia (esperado: 409)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 1,
+    "dia_semana": "segunda",
+    "hora_inicio": "10:00",
+    "hora_fim": "16:00"
+}
+
+### 15. Atualizar para um dia que já existe (esperado: 409)
+PUT http://127.0.0.1:5000/disponibilidade/2
+Content-Type: application/json
+
+{
+    "dia_semana": "segunda"
+}
+
+### 16. Buscar uma que não existe (esperado: 404)
+GET http://127.0.0.1:5000/disponibilidade/999
+
+
+# ---------- EXCLUSÃO ----------
+
+### 17. Excluir disponibilidade (esperado: 200)
+DELETE http://127.0.0.1:5000/disponibilidade/2
+
+### 18. Confirmar exclusão (esperado: 404)
+GET http://127.0.0.1:5000/disponibilidade/2
