@@ -2,9 +2,13 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from extensions import db
 from models.usuario import Usuario
+from models.veterinario import Veterinario
 from routes.routes.usuarios import usuarios_bp
 from models.disponibilidade import Disponibilidade
 from routes.routes.disponibilidade import disponibilidade_bp
+from routes.routes.veterinarios import veterinarios_bp
+from models.pet import Pet
+from routes.routes.pets import pets_bp
 
 app = Flask(__name__)
 
@@ -17,6 +21,8 @@ db.init_app(app)
 
 app.register_blueprint(usuarios_bp)
 app.register_blueprint(disponibilidade_bp)
+app.register_blueprint(veterinarios_bp)
+app.register_blueprint(pets_bp)
 
 
 @app.route("/")

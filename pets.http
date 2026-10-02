@@ -1,0 +1,150 @@
+# =========================================
+# TESTES DE PETS
+# Pré-requisito: tutor com id 1 criado
+# (primeiro POST do teste.http)
+# =========================================
+
+
+# ---------- CASOS DE SUCESSO ----------
+
+### 1. Criar pet completo (esperado: 201)
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Rex",
+    "especie": "Cachorro",
+    "raca": "Golden Retriever",
+    "sexo": "Macho",
+    "data_nascimento": "2022-05-10",
+    "usuario_id": 1
+}
+
+### 2. Criar pet sem raça e sem data, campos opcionais (esperado: 201)
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Mia",
+    "especie": "Gato",
+    "sexo": "Fêmea",
+    "usuario_id": 1
+}
+
+### 3. Listar todos os pets (esperado: 200)
+GET http://127.0.0.1:5000/pets
+
+### 4. Listar pets do tutor 1 (esperado: 200)
+GET http://127.0.0.1:5000/pets?usuario_id=1
+
+### 5. Buscar pet por id (esperado: 200)
+GET http://127.0.0.1:5000/pets/1
+
+### 6. Atualizar só alguns campos (esperado: 200)
+PUT http://127.0.0.1:5000/pets/1
+Content-Type: application/json
+
+{
+    "nome": "Rex Jr.",
+    "data_nascimento": "2022-06-15"
+}
+
+
+# ---------- CASOS DE ERRO ----------
+
+### 7. Criar pet sem campos obrigatórios (esperado: 400)
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Sem Espécie"
+}
+
+### 8. Criar pet com tutor inexistente (esperado: 404)
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Órfão",
+    "especie": "Cachorro",
+    "sexo": "Macho",
+    "usuario_id": 999
+}
+
+### 9. Criar pet com data inválida (esperado: 400)
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Bolt",
+    "especie": "Cachorro",
+    "sexo": "Macho",
+    "data_nascimento": "10/05/2022",
+    "usuario_id": 1
+}
+
+### 10. Criar pet com usuario_id em texto (esperado: 400)
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Bolt",
+    "especie": "Cachorro",
+    "sexo": "Macho",
+    "usuario_id": "abc"
+}
+
+### 11. Buscar pet que não existe (esperado: 404)
+GET http://127.0.0.1:5000/pets/999
+
+### 12. Atualizar deixando o nome vazio (esperado: 400)
+PUT http://127.0.0.1:5000/pets/1
+Content-Type: application/json
+
+{
+    "nome": ""
+}
+
+
+# ---------- EXCLUSÃO ----------
+
+### 13. Excluir pet (esperado: 200)
+DELETE http://127.0.0.1:5000/pets/2
+
+### 14. Confirmar que foi excluído (esperado: 404)
+GET http://127.0.0.1:5000/pets/2
+
+
+# ---------- EXCLUSÃO EM CASCATA (tutor → pets) ----------
+
+### 15. Criar tutor temporário (esperado: 201)
+# ANOTE o "id" que vier na resposta
+POST http://127.0.0.1:5000/usuarios
+Content-Type: application/json
+
+{
+    "nome": "Tutor Temporario",
+    "email": "temporario@teste.com",
+    "telefone": "83900000000",
+    "senha": "123456"
+}
+
+### 16. Criar pet para o tutor temporário (esperado: 201)
+# TROQUE o 2 pelo id anotado no teste 15, se for diferente
+POST http://127.0.0.1:5000/pets
+Content-Type: application/json
+
+{
+    "nome": "Pipoca",
+    "especie": "Hamster",
+    "sexo": "Fêmea",
+    "usuario_id": 1
+}
+
+### 17. Excluir o tutor temporário (esperado: 200, e NÃO 500)
+# TROQUE o 2 pelo id anotado no teste 15, se for diferente
+DELETE http://127.0.0.1:5000/usuarios/2
+
+### 18. Conferir que os pets dele sumiram (esperado: 200 com lista vazia [])
+# TROQUE o 2 pelo id anotado no teste 15, se for diferente
+GET http://127.0.0.1:5000/pets?usuario_id=2
