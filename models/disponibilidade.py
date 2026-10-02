@@ -11,9 +11,7 @@ class Disponibilidade(db.Model):
     )
 
     id = db.Column(db.Integer, primary_key=True)
-    # TODO: quando o veterinario.py chegar, trocar por
-    # db.ForeignKey("<tabela_do_veterinario>.id") com o nome exato da tabela
-    veterinario_id = db.Column(db.Integer, nullable=False)
+    veterinario_id = db.Column(db.Integer, db.ForeignKey("veterinarios.id"), nullable=False)
     dia_semana = db.Column(db.String(20), nullable=False)
     hora_inicio = db.Column(db.String(5), nullable=False)
     hora_fim = db.Column(db.String(5), nullable=False)
