@@ -1,33 +1,40 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
-from extensions import db
+from extensions import db, jwt
 from models.usuario import Usuario
 from models.veterinario import Veterinario
 from routes.routes.usuarios import usuarios_bp
 from routes.routes.veterinarios import veterinarios_bp
+from datetime import timedelta
+import os
 
-app = Flask(__name__)
+def create_app(config=None):
+    app = Flask(__name__)
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///clinica.db'),
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'CHAVE_APENAS_DESENVOLVIMENTO_TROQUE_ANTES_DE_PUBLICAR'),
+        JWT_ACCESS_TOKEN_EXPIRES=timedelta(hours=1),
+    )
+    if config:
+        app.config.update(config)
+    CORS(app)
+    db.init_app(app)
+    jwt.init_app(app)
+    from models.usuario import Usuario
+    from routes.usuarios import usuarios_bp
+    app.register_blueprint(usuarios_bp)
 
-CORS(app)
+    @app.get('/')
+    def inicio():
+        return jsonify(mensagem='API da Clínica Veterinária UNIESP funcionando!')
 
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///clinica.db"
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-db.init_app(app)
-
-app.register_blueprint(usuarios_bp)
-app.register_blueprint(veterinarios_bp)
+    with app.app_context():
+        db.create_all()
+    return app
 
 
-@app.route("/")
-def inicio():
-    return jsonify({
-        "mensagem": "API da Clínica Veterinária UNIESP funcionando!"
-    })
+app = create_app()
 
-with app.app_context():
-    db.create_all()
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)

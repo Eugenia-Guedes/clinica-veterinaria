@@ -1,182 +1,151 @@
-from flask import Blueprint, request, jsonify
-from werkzeug.security import generate_password_hash, check_password_hash
+import re
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
+from sqlalchemy.exc import IntegrityError
+from werkzeug.security import check_password_hash, generate_password_hash
 from extensions import db
 from models.usuario import Usuario
 
+usuarios_bp = Blueprint('usuarios', __name__)
+EMAIL_RE = re.compile(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
-usuarios_bp = Blueprint("usuarios", __name__)
+
+def corpo_json():
+    if not request.is_json:
+        return None
+    dados = request.get_json(silent=True)
+    return dados if isinstance(dados, dict) else None
 
 
-@usuarios_bp.route("/usuarios", methods=["POST"])
+def validar(dados, obrigatorios=False):
+    campos = ('nome', 'email', 'telefone', 'senha')
+    if obrigatorios and any(c not in dados for c in campos):
+        return 'Nome, email, telefone e senha são obrigatórios'
+    for campo in campos:
+        if campo in dados and (not isinstance(dados[campo], str) or not dados[campo].strip()):
+            return f'{campo} deve ser um texto não vazio'
+    if 'email' in dados and not EMAIL_RE.fullmatch(dados['email'].strip()):
+        return 'E-mail inválido'
+    if 'senha' in dados and len(dados['senha']) < 8:
+        return 'A senha deve ter pelo menos 8 caracteres'
+    if 'nome' in dados and len(dados['nome'].strip()) > 100:
+        return 'Nome muito longo'
+    if 'email' in dados and len(dados['email'].strip()) > 120:
+        return 'E-mail muito longo'
+    if 'telefone' in dados and len(dados['telefone'].strip()) > 20:
+        return 'Telefone muito longo'
+    return None
+
+
+def email_normalizado(valor):
+    return valor.strip().lower()
+
+
+def usuario_atual():
+    return db.session.get(Usuario, int(get_jwt_identity()))
+
+
+@usuarios_bp.post('/usuarios')
 def cadastrar_usuario():
-    dados = request.get_json()
+    dados = corpo_json()
+    if dados is None:
+        return jsonify(erro='Envie um objeto JSON válido'), 400
+    erro = validar(dados, obrigatorios=True)
+    if erro:
+        return jsonify(erro=erro), 400
+    email = email_normalizado(dados['email'])
+    if db.session.query(Usuario).filter_by(email=email).first():
+        return jsonify(erro='E-mail já cadastrado'), 409
+    usuario = Usuario(nome=dados['nome'].strip(), email=email,
+                      telefone=dados['telefone'].strip(),
+                      senha=generate_password_hash(dados['senha']))
+    db.session.add(usuario)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify(erro='E-mail já cadastrado'), 409
+    return jsonify(mensagem='Usuário cadastrado com sucesso', usuario=usuario.publico()), 201
 
-    if not dados:
-        return jsonify({
-            "erro": "Dados não enviados"
-        }), 400
 
-    nome = dados.get("nome")
-    email = dados.get("email")
-    telefone = dados.get("telefone")
-    senha = dados.get("senha")
+@usuarios_bp.post('/login')
+def login():
+    dados = corpo_json()
+    if dados is None or not isinstance(dados.get('email'), str) or not isinstance(dados.get('senha'), str):
+        return jsonify(erro='E-mail e senha são obrigatórios'), 400
+    usuario = db.session.query(Usuario).filter_by(email=email_normalizado(dados['email'])).first()
+    if not usuario or not check_password_hash(usuario.senha, dados['senha']):
+        return jsonify(erro='E-mail ou senha inválidos'), 401
+    token = create_access_token(identity=str(usuario.id))
+    return jsonify(mensagem='Login realizado com sucesso', access_token=token, usuario=usuario.publico()), 200
 
-    if not nome or not email or not telefone or not senha:
-        return jsonify({
-            "erro": "Nome, email, telefone e senha são obrigatórios"
-        }), 400
 
-    usuario_existente = Usuario.query.filter_by(email=email).first()
-
-    if usuario_existente:
-        return jsonify({
-            "erro": "E-mail já cadastrado"
-        }), 409
-
-    senha_hash = generate_password_hash(senha)
-
-    novo_usuario = Usuario(
-        nome=nome,
-        email=email,
-        telefone=telefone,
-        senha=senha_hash
-    )
-
-    db.session.add(novo_usuario)
-    db.session.commit()
-
-    return jsonify({
-        "mensagem": "Usuário cadastrado com sucesso",
-        "usuario": {
-            "id": novo_usuario.id,
-            "nome": novo_usuario.nome,
-            "email": novo_usuario.email,
-            "telefone": novo_usuario.telefone
-        }
-    }), 201
-
-@usuarios_bp.route("/usuarios", methods=["GET"])
+@usuarios_bp.get('/usuarios')
+@jwt_required()
 def listar_usuarios():
-    usuarios = Usuario.query.all()
+    if usuario_atual() is None:
+        return jsonify(erro='Usuário não encontrado'), 404
+    # Demonstração acadêmica: em produção, restringir a administradores.
+    usuarios = db.session.query(Usuario).order_by(Usuario.id).all()
+    return jsonify([u.publico() for u in usuarios]), 200
 
-    resultado = []
 
-    for usuario in usuarios:
-        resultado.append({
-            "id": usuario.id,
-            "nome": usuario.nome,
-            "email": usuario.email,
-            "telefone": usuario.telefone
-        })
-
-    return jsonify(resultado), 200
-
-@usuarios_bp.route("/usuarios/<int:id>", methods=["GET"])
+@usuarios_bp.get('/usuarios/<int:id>')
+@jwt_required()
 def buscar_usuario(id):
-    usuario = db.session.get(Usuario, id)
+    atual = usuario_atual()
+    if atual is None:
+        return jsonify(erro='Usuário não encontrado'), 404
+    if atual.id != id:
+        return jsonify(erro='Acesso negado'), 403
+    return jsonify(atual.publico()), 200
 
-    if not usuario:
-        return jsonify({
-            "erro": "Usuário não encontrado"
-        }), 404
 
-    return jsonify({
-        "id": usuario.id,
-        "nome": usuario.nome,
-        "email": usuario.email,
-        "telefone": usuario.telefone
-    }), 200
-
-@usuarios_bp.route("/usuarios/<int:id>", methods=["PUT"])
+@usuarios_bp.put('/usuarios/<int:id>')
+@jwt_required()
 def atualizar_usuario(id):
-    usuario = db.session.get(Usuario, id)
+    usuario = usuario_atual()
+    if usuario is None:
+        return jsonify(erro='Usuário não encontrado'), 404
+    if usuario.id != id:
+        return jsonify(erro='Acesso negado'), 403
+    dados = corpo_json()
+    if dados is None:
+        return jsonify(erro='Envie um objeto JSON válido'), 400
+    erro = validar(dados)
+    if erro:
+        return jsonify(erro=erro), 400
+    if not any(c in dados for c in ('nome', 'email', 'telefone', 'senha')):
+        return jsonify(erro='Nenhum campo válido para atualizar'), 400
+    if 'email' in dados:
+        email = email_normalizado(dados['email'])
+        outro = db.session.query(Usuario).filter_by(email=email).first()
+        if outro and outro.id != usuario.id:
+            return jsonify(erro='E-mail já cadastrado'), 409
+        usuario.email = email
+    if 'nome' in dados:
+        usuario.nome = dados['nome'].strip()
+    if 'telefone' in dados:
+        usuario.telefone = dados['telefone'].strip()
+    if 'senha' in dados:
+        usuario.senha = generate_password_hash(dados['senha'])
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify(erro='E-mail já cadastrado'), 409
+    return jsonify(mensagem='Usuário atualizado com sucesso', usuario=usuario.publico()), 200
 
-    if not usuario:
-        return jsonify({
-            "erro": "Usuário não encontrado"
-        }), 404
 
-    dados = request.get_json()
-
-    if not dados:
-        return jsonify({
-            "erro": "Dados não enviados"
-        }), 400
-
-    if "nome" in dados:
-        usuario.nome = dados["nome"]
-
-    if "email" in dados:
-        usuario.email = dados["email"]
-
-    if "telefone" in dados:
-        usuario.telefone = dados["telefone"]
-
-    if "senha" in dados:
-        usuario.senha = generate_password_hash(dados["senha"])
-
-    db.session.commit()
-
-    return jsonify({
-        "mensagem": "Usuário atualizado com sucesso",
-        "usuario": {
-            "id": usuario.id,
-            "nome": usuario.nome,
-            "email": usuario.email,
-            "telefone": usuario.telefone
-        }
-    }), 200
-
-@usuarios_bp.route("/usuarios/<int:id>", methods=["DELETE"])
+@usuarios_bp.delete('/usuarios/<int:id>')
+@jwt_required()
 def excluir_usuario(id):
-    usuario = db.session.get(Usuario, id)
-
-    if not usuario:
-        return jsonify({
-            "erro": "Usuário não encontrado"
-        }), 404
-
+    usuario = usuario_atual()
+    if usuario is None:
+        return jsonify(erro='Usuário não encontrado'), 404
+    if usuario.id != id:
+        return jsonify(erro='Acesso negado'), 403
+    # Quando pets forem implementados, combinar exclusão de tutor com pets vinculados.
     db.session.delete(usuario)
     db.session.commit()
-
-    return jsonify({
-        "mensagem": "Usuário excluído com sucesso"
-    }), 200
-
-@usuarios_bp.route("/login", methods=["POST"])
-def login():
-    dados = request.get_json()
-
-    if not dados:
-        return jsonify({
-            "erro": "Dados não enviados"
-        }), 400
-
-    email = dados.get("email")
-    senha = dados.get("senha")
-
-    if not email or not senha:
-        return jsonify({
-            "erro": "E-mail e senha são obrigatórios"
-        }), 400
-
-    usuario = Usuario.query.filter_by(email=email).first()
-
-    if not usuario:
-        return jsonify({
-            "erro": "E-mail ou senha inválidos"
-        }), 401
-
-    if not check_password_hash(usuario.senha, senha):
-        return jsonify({
-            "erro": "E-mail ou senha inválidos"
-        }), 401
-
-    return jsonify({
-        "mensagem": "Login realizado com sucesso",
-        "usuario": {
-            "id": usuario.id,
-            "nome": usuario.nome,
-            "email": usuario.email
-        }
-    }), 200
+    return jsonify(mensagem='Usuário excluído com sucesso'), 200
