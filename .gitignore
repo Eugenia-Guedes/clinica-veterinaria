@@ -6,3 +6,4 @@ instance/
 .env
 .vscode/
 teste.http
+.pytest_cache/
