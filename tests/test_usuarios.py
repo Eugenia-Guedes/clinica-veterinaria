@@ -4,7 +4,7 @@ from extensions import db
 
 @pytest.fixture
 def client():
-    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:', 'JWT_SECRET_KEY': 'teste-secreto'})
+    app = create_app({'TESTING': True, 'SQLALCHEMY_DATABASE_URI': 'sqlite:///:memory:', "JWT_SECRET_KEY": "chave-segura-exclusiva-para-testes-uniesp-2026"})
     with app.test_client() as client:
         yield client
     with app.app_context():

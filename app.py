@@ -3,7 +3,7 @@ from flask_cors import CORS
 from extensions import db, jwt
 from models.usuario import Usuario
 from models.veterinario import Veterinario
-from routes.routes.usuarios import usuarios_bp
+from routes.usuarios import usuarios_bp
 from routes.routes.veterinarios import veterinarios_bp
 from datetime import timedelta
 import os
@@ -13,7 +13,7 @@ def create_app(config=None):
     app.config.update(
         SQLALCHEMY_DATABASE_URI=os.getenv('DATABASE_URL', 'sqlite:///clinica.db'),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'CHAVE_APENAS_DESENVOLVIMENTO_TROQUE_ANTES_DE_PUBLICAR'),
+        JWT_SECRET_KEY=os.getenv('JWT_SECRET_KEY', 'CHAVE_TEMPORARIA_DESENVOLVIMENTO_UNIESP_2026'),
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(hours=1),
     )
     if config:
@@ -38,3 +38,6 @@ app = create_app()
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+##  d2a293e17ba94154caa361f09dc8a10deec8422290ac08129b93990a0a42c283
