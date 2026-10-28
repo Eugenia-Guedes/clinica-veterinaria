@@ -1,0 +1,128 @@
+# =========================================
+# TESTES DE CONSULTAS
+# Pré-requisito: tutor, pet e veterinário cadastrados
+# =========================================
+
+# ---------- CASOS DE SUCESSO ----------
+
+### 1. Criar consulta completa (esperado: 201)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 1,
+    "veterinario_id": 1,
+    "data": "2026-11-10",
+    "hora": "14:00",
+    "motivo": "Consulta de rotina e vacinação"
+}
+
+### 2. Criar consulta sem motivo (esperado: 201)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 1,
+    "veterinario_id": 1,
+    "data": "2026-11-15",
+    "hora": "09:00"
+}
+
+### 3. Listar todas as consultas (esperado: 200)
+GET http://127.0.0.1:5000/consultas
+
+### 4. Filtrar consultas por pet (esperado: 200)
+GET http://127.0.0.1:5000/consultas?pet_id=1
+
+### 5. Filtrar consultas por veterinário (esperado: 200)
+GET http://127.0.0.1:5000/consultas?veterinario_id=1
+
+### 6. Filtrar consultas por data (esperado: 200)
+GET http://127.0.0.1:5000/consultas?data=2026-11-10
+
+### 7. Buscar consulta por ID (esperado: 200)
+GET http://127.0.0.1:5000/consultas/1
+
+### 8. Remarcar consulta (esperado: 200, status Remarcada)
+PATCH http://127.0.0.1:5000/consultas/1/remarcar
+Content-Type: application/json
+
+{
+    "data": "2026-11-12",
+    "hora": "16:00"
+}
+
+### 9. Cancelar consulta (esperado: 200, status Cancelada)
+PATCH http://127.0.0.1:5000/consultas/2/cancelar
+
+
+# ---------- CASOS DE ERRO ----------
+
+### 10. Criar consulta sem campos obrigatórios (esperado: 400)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 1
+}
+
+### 11. Criar consulta com pet inexistente (esperado: 404)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 999,
+    "veterinario_id": 1,
+    "data": "2026-11-10",
+    "hora": "10:00"
+}
+
+### 12. Criar consulta com veterinário inexistente (esperado: 404)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 1,
+    "veterinario_id": 999,
+    "data": "2026-11-10",
+    "hora": "10:00"
+}
+
+### 13. Criar consulta com data inválida (esperado: 400)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 1,
+    "veterinario_id": 1,
+    "data": "10/11/2026",
+    "hora": "10:00"
+}
+
+### 14. Conflito de horário do veterinário (esperado: 409)
+POST http://127.0.0.1:5000/consultas
+Content-Type: application/json
+
+{
+    "pet_id": 2,
+    "veterinario_id": 1,
+    "data": "2026-11-12",
+    "hora": "16:00"
+}
+
+### 15. Tentar remarcar consulta já cancelada (esperado: 400)
+PATCH http://127.0.0.1:5000/consultas/2/remarcar
+Content-Type: application/json
+
+{
+    "hora": "17:00"
+}
+
+
+# ---------- EXCLUSÃO ----------
+
+### 16. Excluir consulta (esperado: 200)
+DELETE http://127.0.0.1:5000/consultas/1
+
+### 17. Confirmar exclusão (esperado: 404)
+GET http://127.0.0.1:5000/consultas/1
