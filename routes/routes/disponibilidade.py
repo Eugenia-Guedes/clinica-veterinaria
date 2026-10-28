@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 from extensions import db
 from models.disponibilidade import Disponibilidade
+from models.veterinario import Veterinario
 
 
 disponibilidade_bp = Blueprint("disponibilidade", __name__)
@@ -58,6 +59,11 @@ def validar_horarios(hora_inicio, hora_fim):
     return inicio < fim
 
 
+def veterinario_existe(veterinario_id):
+    """Verifica se existe um veterinário cadastrado com esse id."""
+    return db.session.get(Veterinario, veterinario_id) is not None
+
+
 def ja_existe(veterinario_id, dia_semana, ignorar_id=None):
     """Verifica se o veterinário já tem disponibilidade cadastrada nesse dia."""
     consulta = Disponibilidade.query.filter_by(
@@ -102,6 +108,9 @@ def cadastrar_disponibilidade():
         return jsonify({
             "erro": "Horários inválidos. Use HH:MM e informe o início antes do fim"
         }), 400
+
+    if not veterinario_existe(veterinario_id):
+        return jsonify({"erro": "Veterinário não encontrado"}), 404
 
     if ja_existe(veterinario_id, dia_normalizado):
         return jsonify({
@@ -195,6 +204,9 @@ def atualizar_disponibilidade(id):
         return jsonify({
             "erro": "Horários inválidos. Use HH:MM e informe o início antes do fim"
         }), 400
+
+    if not veterinario_existe(veterinario_id):
+        return jsonify({"erro": "Veterinário não encontrado"}), 404
 
     if ja_existe(veterinario_id, dia_semana, ignorar_id=id):
         return jsonify({
