@@ -1,7 +1,21 @@
 # =========================================
 # TESTES DE DISPONIBILIDADE
-# # Pré-requisito: banco vazio (rodar na ordem)
+# Pré-requisito: servidor rodando e banco vazio (rodar na ordem)
 # =========================================
+
+
+# ---------- PREPARAÇÃO ----------
+
+### 0. Cadastrar o veterinário 1 (esperado: 201)
+# A disponibilidade só pode ser criada para um veterinário que existe
+POST http://127.0.0.1:5000/veterinarios
+Content-Type: application/json
+
+{
+    "nome": "Dra. Laura",
+    "crmv": "CRMV-PB 1234",
+    "especialidade": "Clínica geral"
+}
 
 
 # ---------- CASOS DE SUCESSO ----------
@@ -130,11 +144,22 @@ Content-Type: application/json
 ### 16. Buscar uma que não existe (esperado: 404)
 GET http://127.0.0.1:5000/disponibilidade/999
 
+### 17. Criar para um veterinário que não existe (esperado: 404)
+POST http://127.0.0.1:5000/disponibilidade
+Content-Type: application/json
+
+{
+    "veterinario_id": 999,
+    "dia_semana": "sexta",
+    "hora_inicio": "08:00",
+    "hora_fim": "17:00"
+}
+
 
 # ---------- EXCLUSÃO ----------
 
-### 17. Excluir disponibilidade (esperado: 200)
+### 18. Excluir disponibilidade (esperado: 200)
 DELETE http://127.0.0.1:5000/disponibilidade/2
 
-### 18. Confirmar exclusão (esperado: 404)
+### 19. Confirmar exclusão (esperado: 404)
 GET http://127.0.0.1:5000/disponibilidade/2
