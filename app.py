@@ -10,11 +10,13 @@ from models.usuario import Usuario
 from models.veterinario import Veterinario
 from models.disponibilidade import Disponibilidade
 from models.pet import Pet
+from models.consulta import Consulta
 
 from routes.usuarios import usuarios_bp
 from routes.routes.veterinarios import veterinarios_bp
 from routes.routes.disponibilidade import disponibilidade_bp
 from routes.routes.pets import pets_bp
+from routes.consultas import consultas_bp
 
 
 def create_app(config=None):
@@ -44,6 +46,7 @@ def create_app(config=None):
     app.register_blueprint(veterinarios_bp)
     app.register_blueprint(disponibilidade_bp)
     app.register_blueprint(pets_bp)
+    app.register_blueprint(consultas_bp)
 
     @app.get("/")
     def inicio():
