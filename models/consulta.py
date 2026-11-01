@@ -1,3 +1,4 @@
+
 from extensions import db
 
 
@@ -16,9 +17,10 @@ class Consulta(db.Model):
         "Pet",
         backref=db.backref("consultas", cascade="all, delete-orphan")
     )
+
     veterinario = db.relationship(
         "Veterinario",
-        backref=db.backref("consultas", cascade="all, delete-orphan")
+        backref=db.backref("consultas")
     )
 
     def __repr__(self):
