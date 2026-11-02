@@ -89,15 +89,16 @@ def test_fluxo_usuario_login_pet(client):
         for pet in resposta_lista.json
     )
 
+
 def test_fluxo_completo_agendamento_consulta(client):
 
-     # 1. Cadastrar usuário
+    # 1. Cadastrar usuário
     resposta_usuario = client.post("/usuarios", json={
-            "nome": "João Silva",
-            "email": "joao.integracao@teste.com",
-            "telefone": "83988888888",
-            "senha": "SenhaSegura123"
-        })
+        "nome": "João Silva",
+        "email": "joao.integracao@teste.com",
+        "telefone": "83988888888",
+        "senha": "SenhaSegura123"
+    })
 
     assert resposta_usuario.status_code == 201
     usuario_id = resposta_usuario.json["usuario"]["id"]
@@ -117,7 +118,6 @@ def test_fluxo_completo_agendamento_consulta(client):
     # 3. Cadastrar veterinário
     resposta_veterinario = client.post("/veterinarios", json={
         "nome": "Dra. Ana Costa",
-        "crmv": "PB-12345",
         "especialidade": "Clínica Geral"
     })
 

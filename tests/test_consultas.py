@@ -51,11 +51,14 @@ def criar_pet(client, usuario_id, nome="Rex", **campos):
     return resposta.json["pet"]["id"]
 
 
-def criar_veterinario(client, crmv="CRMV-PB 1234", nome="Dra. Laura", especialidade="Clínica Geral"):
+def criar_veterinario(
+    client,
+    nome="Dra. Laura",
+    especialidade="Clínica Geral"
+):
     """Cadastra um veterinário e devolve seu id."""
     resposta = client.post("/veterinarios", json={
         "nome": nome,
-        "crmv": crmv,
         "especialidade": especialidade,
     })
     assert resposta.status_code == 201
@@ -209,8 +212,8 @@ def test_conflito_horario_mesmo_veterinario_retorna_409(client):
 def test_conflito_horario_mesmo_pet_retorna_409(client):
     tutor_id = criar_tutor(client)
     pet_id = criar_pet(client, tutor_id)
-    vet1 = criar_veterinario(client, crmv="CRMV-PB 1111", nome="Dra. Laura")
-    vet2 = criar_veterinario(client, crmv="CRMV-PB 2222", nome="Dr. Carlos")
+    vet1 = criar_veterinario(client, nome="Dra. Laura")
+    vet2 = criar_veterinario(client, nome="Dr. Carlos")
 
     r1 = criar_consulta(client, pet_id, vet1, data="2026-11-10", hora="14:00")
     assert r1.status_code == 201
@@ -224,8 +227,8 @@ def test_permitir_mesmo_horario_para_veterinarios_distintos(client):
     tutor_id = criar_tutor(client)
     pet1 = criar_pet(client, tutor_id, nome="Rex")
     pet2 = criar_pet(client, tutor_id, nome="Mia", especie="Gato")
-    vet1 = criar_veterinario(client, crmv="CRMV-PB 1111", nome="Dra. Laura")
-    vet2 = criar_veterinario(client, crmv="CRMV-PB 2222", nome="Dr. Carlos")
+    vet1 = criar_veterinario(client, nome="Dra. Laura")
+    vet2 = criar_veterinario(client, nome="Dr. Carlos")
 
     r1 = criar_consulta(client, pet1, vet1, data="2026-11-10", hora="14:00")
     r2 = criar_consulta(client, pet2, vet2, data="2026-11-10", hora="14:00")
@@ -240,8 +243,8 @@ def test_listar_consultas_e_filtros(client):
     tutor_id = criar_tutor(client)
     pet1 = criar_pet(client, tutor_id, nome="Rex")
     pet2 = criar_pet(client, tutor_id, nome="Mia", especie="Gato")
-    vet1 = criar_veterinario(client, crmv="CRMV-PB 1111")
-    vet2 = criar_veterinario(client, crmv="CRMV-PB 2222", nome="Dr. Carlos")
+    vet1 = criar_veterinario(client, nome="Dra. Laura")
+    vet2 = criar_veterinario(client, nome="Dr. Carlos")
 
     criar_consulta(client, pet1, vet1, data="2026-11-10", hora="10:00")
     criar_consulta(client, pet1, vet2, data="2026-11-11", hora="11:00")
@@ -289,7 +292,9 @@ def test_remarcar_consulta_com_sucesso(client):
     tutor_id = criar_tutor(client)
     pet_id = criar_pet(client, tutor_id)
     vet_id = criar_veterinario(client)
-    consulta_id = criar_consulta(client, pet_id, vet_id, data="2026-11-10", hora="14:00").json["consulta"]["id"]
+    consulta_id = criar_consulta(
+        client, pet_id, vet_id, data="2026-11-10", hora="14:00"
+    ).json["consulta"]["id"]
 
     resposta = client.patch(f"/consultas/{consulta_id}/remarcar", json={
         "data": "2026-11-12",
@@ -307,7 +312,9 @@ def test_remarcar_apenas_hora(client):
     tutor_id = criar_tutor(client)
     pet_id = criar_pet(client, tutor_id)
     vet_id = criar_veterinario(client)
-    consulta_id = criar_consulta(client, pet_id, vet_id, data="2026-11-10", hora="14:00").json["consulta"]["id"]
+    consulta_id = criar_consulta(
+        client, pet_id, vet_id, data="2026-11-10", hora="14:00"
+    ).json["consulta"]["id"]
 
     resposta = client.put(f"/consultas/{consulta_id}/remarcar", json={"hora": "15:30"})
 
@@ -341,7 +348,6 @@ def test_remarcar_para_horario_com_conflito_retorna_409(client):
     c1 = criar_consulta(client, pet1, vet_id, data="2026-11-10", hora="14:00").json["consulta"]["id"]
     criar_consulta(client, pet2, vet_id, data="2026-11-10", hora="15:00")
 
-    # Tenta remarcar c1 para as 15:00 onde já existe consulta com o mesmo vet
     resposta = client.patch(f"/consultas/{c1}/remarcar", json={"hora": "15:00"})
     assert resposta.status_code == 409
 
@@ -372,7 +378,6 @@ def test_cancelar_consulta_com_sucesso(client):
     assert resposta.status_code == 200
     assert resposta.json["consulta"]["status"] == "Cancelada"
 
-    # Confere no GET que o status está Cancelada
     busca = client.get(f"/consultas/{c_id}")
     assert busca.json["status"] == "Cancelada"
 
@@ -397,12 +402,12 @@ def test_horario_de_consulta_cancelada_pode_ser_reutilizado(client):
     pet2 = criar_pet(client, tutor_id, nome="Mia", especie="Gato")
     vet_id = criar_veterinario(client)
 
-    c1 = criar_consulta(client, pet1, vet_id, data="2026-11-10", hora="14:00").json["consulta"]["id"]
+    c1 = criar_consulta(
+        client, pet1, vet_id, data="2026-11-10", hora="14:00"
+    ).json["consulta"]["id"]
 
-    # Cancela c1
     client.patch(f"/consultas/{c1}/cancelar")
 
-    # Agora pet2 pode agendar no mesmo dia e horário com o mesmo veterinário!
     r2 = criar_consulta(client, pet2, vet_id, data="2026-11-10", hora="14:00")
     assert r2.status_code == 201
 
@@ -461,9 +466,7 @@ def test_excluir_pet_exclui_consultas_em_cascata(client):
     vet_id = criar_veterinario(client)
     c_id = criar_consulta(client, pet_id, vet_id).json["consulta"]["id"]
 
-    # Exclui o pet
     del_pet = client.delete(f"/pets/{pet_id}")
     assert del_pet.status_code == 200
 
-    # Consulta deve ter sumido em cascata
     assert client.get(f"/consultas/{c_id}").status_code == 404

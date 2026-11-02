@@ -20,12 +20,15 @@ def client():
         db.drop_all()
 
 
-def criar_veterinario(client, crmv="CRMV-PB 1234"):
+def criar_veterinario(
+    client,
+    nome="Dra. Laura",
+    especialidade="Clínica geral"
+):
     """Cadastra um veterinário válido e devolve o id dele."""
     resposta = client.post("/veterinarios", json={
-        "nome": "Dra. Laura",
-        "crmv": crmv,
-        "especialidade": "Clínica geral",
+        "nome": nome,
+        "especialidade": especialidade,
     })
     assert resposta.status_code == 201
     return resposta.json["veterinario"]["id"]
@@ -137,8 +140,8 @@ def test_criar_duplicada_no_mesmo_dia_retorna_409(client):
 
 
 def test_mesmo_dia_para_veterinarios_diferentes_e_permitido(client):
-    vet1 = criar_veterinario(client, crmv="CRMV-PB 1111")
-    vet2 = criar_veterinario(client, crmv="CRMV-PB 2222")
+    vet1 = criar_veterinario(client, nome="Dra. Laura")
+    vet2 = criar_veterinario(client, nome="Dr. Carlos")
 
     assert criar_disponibilidade(client, vet1).status_code == 201
     assert criar_disponibilidade(client, vet2).status_code == 201
@@ -158,8 +161,9 @@ def test_listar_disponibilidades(client):
 
 
 def test_listar_filtrando_por_veterinario(client):
-    vet1 = criar_veterinario(client, crmv="CRMV-PB 1111")
-    vet2 = criar_veterinario(client, crmv="CRMV-PB 2222")
+    vet1 = criar_veterinario(client, nome="Dra. Laura")
+    vet2 = criar_veterinario(client, nome="Dr. Carlos")
+
     criar_disponibilidade(client, vet1)
     criar_disponibilidade(client, vet2)
 
@@ -211,6 +215,7 @@ def test_atualizar_com_horario_invalido_retorna_400(client):
 def test_atualizar_para_dia_ja_ocupado_retorna_409(client):
     vet_id = criar_veterinario(client)
     criar_disponibilidade(client, vet_id, dia_semana="segunda")
+
     id_terca = criar_disponibilidade(
         client, vet_id, dia_semana="terca"
     ).json["disponibilidade"]["id"]
