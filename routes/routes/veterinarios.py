@@ -1,4 +1,4 @@
-﻿from flask import Blueprint, request, jsonify
+﻿from flask import Blueprint, current_app, request, jsonify
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from extensions import db
@@ -10,6 +10,14 @@ from models.disponibilidade import Disponibilidade
 veterinarios_bp = Blueprint("veterinarios", __name__)
 
 
+# Limites iguais aos definidos nas colunas de models/veterinario.py.
+# O SQLite não os impõe, por isso a API precisa validar.
+LIMITES_CAMPOS = {
+    "nome": 100,
+    "especialidade": 60,
+}
+
+
 # ==========================================================
 # VALIDAÇÃO DOS DADOS
 # ==========================================================
@@ -19,11 +27,9 @@ def validar_campos(dados, campos_obrigatorios=False):
     if not isinstance(dados, dict) or not dados:
         return "Envie os dados em formato JSON."
 
-    campos_permitidos = ("nome", "especialidade")
-
     campos_nao_permitidos = [
         campo for campo in dados
-        if campo not in campos_permitidos
+        if campo not in LIMITES_CAMPOS
     ]
 
     if campos_nao_permitidos:
@@ -32,19 +38,29 @@ def validar_campos(dados, campos_obrigatorios=False):
             + ", ".join(campos_nao_permitidos)
         )
 
-    for campo in campos_permitidos:
+    for campo, limite in LIMITES_CAMPOS.items():
 
-        valor = dados.get(campo)
-
-        if campos_obrigatorios:
-            if not isinstance(valor, str) or not valor.strip():
+        if campo not in dados:
+            if campos_obrigatorios:
                 return f"O campo {campo} é obrigatório."
+            continue
 
-        if campo in dados:
-            if not isinstance(valor, str) or not valor.strip():
-                return f"O campo {campo} deve ser um texto válido."
+        valor = dados[campo]
 
-            dados[campo] = valor.strip()
+        if not isinstance(valor, str) or not valor.strip():
+            if campos_obrigatorios:
+                return f"O campo {campo} é obrigatório."
+            return f"O campo {campo} deve ser um texto válido."
+
+        valor = valor.strip()
+
+        if len(valor) > limite:
+            return (
+                f"O campo {campo} deve ter no máximo "
+                f"{limite} caracteres."
+            )
+
+        dados[campo] = valor
 
     return None
 
@@ -97,6 +113,7 @@ def cadastrar_veterinario():
 
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Falha ao cadastrar veterinario.")
 
         return jsonify({
             "erro": "Não foi possível cadastrar o veterinário."
@@ -127,6 +144,7 @@ def listar_veterinarios():
 
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Falha ao listar veterinarios.")
 
         return jsonify({
             "erro": "Não foi possível listar os veterinários."
@@ -154,6 +172,7 @@ def buscar_veterinario(id):
 
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Falha ao buscar veterinario.")
 
         return jsonify({
             "erro": "Não foi possível buscar o veterinário."
@@ -169,18 +188,12 @@ def atualizar_veterinario(id):
 
     dados = request.get_json(silent=True)
 
+    # Rejeita corpo vazio, campos desconhecidos e valores inválidos.
+    # Se passar, há ao menos um campo válido para atualizar.
     erro = validar_campos(dados)
 
     if erro:
         return jsonify({"erro": erro}), 400
-
-    if not any(
-        campo in dados
-        for campo in ("nome", "especialidade")
-    ):
-        return jsonify({
-            "erro": "Informe ao menos um campo para atualizar."
-        }), 400
 
     try:
         veterinario = db.session.get(Veterinario, id)
@@ -190,7 +203,7 @@ def atualizar_veterinario(id):
                 "erro": "Veterinário não encontrado."
             }), 404
 
-        for campo in ("nome", "especialidade"):
+        for campo in LIMITES_CAMPOS:
 
             if campo in dados:
                 setattr(
@@ -215,6 +228,7 @@ def atualizar_veterinario(id):
 
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Falha ao atualizar veterinario.")
 
         return jsonify({
             "erro": "Não foi possível atualizar o veterinário."
@@ -269,8 +283,22 @@ def excluir_veterinario(id):
             "mensagem": "Veterinário excluído com sucesso."
         }), 200
 
+    except IntegrityError:
+        # Rede de segurança: um vínculo pode ter sido criado entre a
+        # verificação acima e o commit, e a chave estrangeira do banco
+        # impede a exclusão.
+        db.session.rollback()
+
+        return jsonify({
+            "erro": (
+                "Não é possível excluir este veterinário "
+                "porque existem registros vinculados."
+            )
+        }), 409
+
     except SQLAlchemyError:
         db.session.rollback()
+        current_app.logger.exception("Falha ao excluir veterinario.")
 
         return jsonify({
             "erro": "Não foi possível excluir o veterinário."
