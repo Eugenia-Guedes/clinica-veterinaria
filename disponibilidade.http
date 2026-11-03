@@ -13,7 +13,6 @@ Content-Type: application/json
 
 {
     "nome": "Dra. Laura",
-    "crmv": "CRMV-PB 1234",
     "especialidade": "Clínica geral"
 }
 
