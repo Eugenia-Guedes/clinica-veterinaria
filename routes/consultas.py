@@ -1,24 +1,33 @@
 from datetime import date, datetime
+
 from flask import Blueprint, jsonify, request
+
 from extensions import db
 from models.consulta import Consulta
 from models.pet import Pet
 from models.veterinario import Veterinario
 
+
 consultas_bp = Blueprint("consultas", __name__)
 
-STATUS_PERMITIDOS = ["Agendada", "Remarcada", "Cancelada", "Realizada"]
+STATUS_PERMITIDOS = (
+    "Agendada",
+    "Remarcada",
+    "Cancelada",
+    "Realizada",
+)
 
 
 def inteiro_valido(valor):
-    """True apenas para inteiros válidos (exclui bool)."""
+    """Verifica se o valor é inteiro, excluindo booleanos."""
     return isinstance(valor, int) and not isinstance(valor, bool)
 
 
 def converter_data(texto):
-    """Converte o texto 'AAAA-MM-DD' em um objeto date. Retorna None se vazio ou inválido."""
+    """Converte uma data no formato AAAA-MM-DD."""
     if not isinstance(texto, str) or not texto.strip():
         return None
+
     try:
         return date.fromisoformat(texto.strip())
     except (ValueError, TypeError):
@@ -26,28 +35,37 @@ def converter_data(texto):
 
 
 def normalizar_hora(valor):
-    """Converte '8:00' ou '08:00' em '08:00'. Se for inválida, devolve None."""
+    """Valida e normaliza horários para o formato HH:MM."""
     if not isinstance(valor, str) or not valor.strip():
         return None
+
     try:
-        return datetime.strptime(valor.strip(), "%H:%M").strftime("%H:%M")
+        return datetime.strptime(
+            valor.strip(), "%H:%M"
+        ).strftime("%H:%M")
     except (ValueError, TypeError):
         return None
 
 
 def normalizar_status(valor):
-    """Normaliza status garantindo formato padronizado e valida contra permitidos."""
+    """Normaliza e valida o status da consulta."""
     if not isinstance(valor, str) or not valor.strip():
         return None
-    capitalizado = valor.strip().capitalize()
+
     for status in STATUS_PERMITIDOS:
-        if status.lower() == capitalizado.lower():
+        if status.lower() == valor.strip().lower():
             return status
+
     return None
 
 
+def domingo_nao_permitido(data_consulta):
+    """Retorna True quando a data corresponde a um domingo."""
+    return data_consulta.weekday() == 6
+
+
 def consulta_para_dict(consulta):
-    """Transforma um objeto Consulta em dicionário para virar JSON."""
+    """Converte uma consulta em dicionário para resposta JSON."""
     return {
         "id": consulta.id,
         "pet_id": consulta.pet_id,
@@ -59,29 +77,43 @@ def consulta_para_dict(consulta):
     }
 
 
-def existe_conflito_veterinario(veterinario_id, data_obj, hora_str, ignorar_id=None):
-    """Verifica se o veterinário já tem consulta ativa no horário."""
+def existe_conflito_veterinario(
+    veterinario_id,
+    data_obj,
+    hora_str,
+    ignorar_id=None,
+):
+    """Verifica conflitos de horário para o veterinário."""
     query = Consulta.query.filter(
         Consulta.veterinario_id == veterinario_id,
         Consulta.data == data_obj,
         Consulta.hora == hora_str,
         Consulta.status != "Cancelada",
     )
+
     if ignorar_id is not None:
         query = query.filter(Consulta.id != ignorar_id)
+
     return query.first() is not None
 
 
-def existe_conflito_pet(pet_id, data_obj, hora_str, ignorar_id=None):
-    """Verifica se o pet já tem consulta ativa no horário."""
+def existe_conflito_pet(
+    pet_id,
+    data_obj,
+    hora_str,
+    ignorar_id=None,
+):
+    """Verifica conflitos de horário para o pet."""
     query = Consulta.query.filter(
         Consulta.pet_id == pet_id,
         Consulta.data == data_obj,
         Consulta.hora == hora_str,
         Consulta.status != "Cancelada",
     )
+
     if ignorar_id is not None:
         query = query.filter(Consulta.id != ignorar_id)
+
     return query.first() is not None
 
 
@@ -89,8 +121,8 @@ def existe_conflito_pet(pet_id, data_obj, hora_str, ignorar_id=None):
 def cadastrar_consulta():
     dados = request.get_json()
 
-    if not dados:
-        return jsonify({"erro": "Dados não enviados"}), 400
+    if not isinstance(dados, dict):
+        return jsonify({"erro": "Envie um objeto JSON válido"}), 400
 
     pet_id = dados.get("pet_id")
     veterinario_id = dados.get("veterinario_id")
@@ -98,7 +130,12 @@ def cadastrar_consulta():
     hora_str = dados.get("hora")
     motivo = dados.get("motivo")
 
-    if pet_id is None or veterinario_id is None or not data_str or not hora_str:
+    if (
+        pet_id is None
+        or veterinario_id is None
+        or not data_str
+        or not hora_str
+    ):
         return jsonify({
             "erro": "pet_id, veterinario_id, data e hora são obrigatórios"
         }), 400
@@ -109,26 +146,37 @@ def cadastrar_consulta():
         }), 400
 
     pet = db.session.get(Pet, pet_id)
-    if not pet:
+
+    if pet is None:
         return jsonify({"erro": "Pet não encontrado"}), 404
 
     veterinario = db.session.get(Veterinario, veterinario_id)
-    if not veterinario:
+
+    if veterinario is None:
         return jsonify({"erro": "Veterinário não encontrado"}), 404
 
     data_obj = converter_data(data_str)
+
     if data_obj is None:
         return jsonify({
             "erro": "Data inválida. Use o formato AAAA-MM-DD"
         }), 400
 
+    if domingo_nao_permitido(data_obj):
+        return jsonify({
+            "erro": "Não são permitidas consultas aos domingos"
+        }), 400
+
     hora_formatada = normalizar_hora(hora_str)
+
     if hora_formatada is None:
         return jsonify({
             "erro": "Hora inválida. Use o formato HH:MM"
         }), 400
 
-    if existe_conflito_veterinario(veterinario_id, data_obj, hora_formatada):
+    if existe_conflito_veterinario(
+        veterinario_id, data_obj, hora_formatada
+    ):
         return jsonify({
             "erro": "Veterinário já possui consulta agendada neste horário"
         }), 409
@@ -173,15 +221,22 @@ def listar_consultas():
 
     if data_filtro:
         data_obj = converter_data(data_filtro)
+
         if data_obj:
             query = query.filter_by(data=data_obj)
 
     if status_filtro:
-        query = query.filter(Consulta.status.ilike(status_filtro.strip()))
+        query = query.filter(
+            Consulta.status.ilike(status_filtro.strip())
+        )
 
     consultas = query.all()
 
-    resultado = [consulta_para_dict(c) for c in consultas]
+    resultado = [
+        consulta_para_dict(consulta)
+        for consulta in consultas
+    ]
+
     return jsonify(resultado), 200
 
 
@@ -189,7 +244,7 @@ def listar_consultas():
 def buscar_consulta(id):
     consulta = db.session.get(Consulta, id)
 
-    if not consulta:
+    if consulta is None:
         return jsonify({"erro": "Consulta não encontrada"}), 404
 
     return jsonify(consulta_para_dict(consulta)), 200
@@ -199,13 +254,13 @@ def buscar_consulta(id):
 def atualizar_consulta(id):
     consulta = db.session.get(Consulta, id)
 
-    if not consulta:
+    if consulta is None:
         return jsonify({"erro": "Consulta não encontrada"}), 404
 
     dados = request.get_json()
 
-    if not dados:
-        return jsonify({"erro": "Dados não enviados"}), 400
+    if not isinstance(dados, dict) or not dados:
+        return jsonify({"erro": "Envie um objeto JSON válido"}), 400
 
     novo_pet_id = consulta.pet_id
     novo_vet_id = consulta.veterinario_id
@@ -216,47 +271,87 @@ def atualizar_consulta(id):
 
     if "pet_id" in dados:
         if not inteiro_valido(dados["pet_id"]):
-            return jsonify({"erro": "pet_id deve ser um número inteiro"}), 400
-        if not db.session.get(Pet, dados["pet_id"]):
+            return jsonify({
+                "erro": "pet_id deve ser um número inteiro"
+            }), 400
+
+        if db.session.get(Pet, dados["pet_id"]) is None:
             return jsonify({"erro": "Pet não encontrado"}), 404
+
         novo_pet_id = dados["pet_id"]
 
     if "veterinario_id" in dados:
         if not inteiro_valido(dados["veterinario_id"]):
-            return jsonify({"erro": "veterinario_id deve ser um número inteiro"}), 400
-        if not db.session.get(Veterinario, dados["veterinario_id"]):
-            return jsonify({"erro": "Veterinário não encontrado"}), 404
+            return jsonify({
+                "erro": "veterinario_id deve ser um número inteiro"
+            }), 400
+
+        if db.session.get(Veterinario, dados["veterinario_id"]) is None:
+            return jsonify({
+                "erro": "Veterinário não encontrado"
+            }), 404
+
         novo_vet_id = dados["veterinario_id"]
 
     if "data" in dados:
         data_convertida = converter_data(dados["data"])
+
         if data_convertida is None:
-            return jsonify({"erro": "Data inválida. Use o formato AAAA-MM-DD"}), 400
+            return jsonify({
+                "erro": "Data inválida. Use o formato AAAA-MM-DD"
+            }), 400
+
         nova_data = data_convertida
 
     if "hora" in dados:
         hora_convertida = normalizar_hora(dados["hora"])
+
         if hora_convertida is None:
-            return jsonify({"erro": "Hora inválida. Use o formato HH:MM"}), 400
+            return jsonify({
+                "erro": "Hora inválida. Use o formato HH:MM"
+            }), 400
+
         nova_hora = hora_convertida
 
     if "motivo" in dados:
-        novo_motivo = dados["motivo"].strip() if isinstance(dados["motivo"], str) else dados["motivo"]
+        novo_motivo = (
+            dados["motivo"].strip()
+            if isinstance(dados["motivo"], str)
+            else dados["motivo"]
+        )
 
     if "status" in dados:
         status_validado = normalizar_status(dados["status"])
+
         if status_validado is None:
             return jsonify({
-                "erro": f"Status inválido. Use: {', '.join(STATUS_PERMITIDOS)}"
+                "erro": (
+                    f"Status inválido. Use: "
+                    f"{', '.join(STATUS_PERMITIDOS)}"
+                )
             }), 400
+
         novo_status = status_validado
 
-    # Se a consulta continuar ativa, verificar conflitos no novo horário/profissionais
     if novo_status != "Cancelada":
-        if existe_conflito_veterinario(novo_vet_id, nova_data, nova_hora, ignorar_id=id):
-            return jsonify({"erro": "Veterinário já possui consulta agendada neste horário"}), 409
-        if existe_conflito_pet(novo_pet_id, nova_data, nova_hora, ignorar_id=id):
-            return jsonify({"erro": "Pet já possui consulta agendada neste horário"}), 409
+        if domingo_nao_permitido(nova_data):
+            return jsonify({
+                "erro": "Não são permitidas consultas aos domingos"
+            }), 400
+
+        if existe_conflito_veterinario(
+            novo_vet_id, nova_data, nova_hora, ignorar_id=id
+        ):
+            return jsonify({
+                "erro": "Veterinário já possui consulta agendada neste horário"
+            }), 409
+
+        if existe_conflito_pet(
+            novo_pet_id, nova_data, nova_hora, ignorar_id=id
+        ):
+            return jsonify({
+                "erro": "Pet já possui consulta agendada neste horário"
+            }), 409
 
     consulta.pet_id = novo_pet_id
     consulta.veterinario_id = novo_vet_id
@@ -273,20 +368,25 @@ def atualizar_consulta(id):
     }), 200
 
 
-@consultas_bp.route("/consultas/<int:id>/remarcar", methods=["PUT", "PATCH"])
+@consultas_bp.route(
+    "/consultas/<int:id>/remarcar",
+    methods=["PUT", "PATCH"],
+)
 def remarcar_consulta(id):
     consulta = db.session.get(Consulta, id)
 
-    if not consulta:
+    if consulta is None:
         return jsonify({"erro": "Consulta não encontrada"}), 404
 
     if consulta.status == "Cancelada":
-        return jsonify({"erro": "Não é possível remarcar uma consulta cancelada"}), 400
+        return jsonify({
+            "erro": "Não é possível remarcar uma consulta cancelada"
+        }), 400
 
     dados = request.get_json()
 
-    if not dados:
-        return jsonify({"erro": "Dados não enviados"}), 400
+    if not isinstance(dados, dict) or not dados:
+        return jsonify({"erro": "Envie um objeto JSON válido"}), 400
 
     nova_data_str = dados.get("data")
     nova_hora_str = dados.get("hora")
@@ -297,24 +397,53 @@ def remarcar_consulta(id):
         }), 400
 
     nova_data = consulta.data
+
     if nova_data_str is not None:
         data_convertida = converter_data(nova_data_str)
+
         if data_convertida is None:
-            return jsonify({"erro": "Data inválida. Use o formato AAAA-MM-DD"}), 400
+            return jsonify({
+                "erro": "Data inválida. Use o formato AAAA-MM-DD"
+            }), 400
+
         nova_data = data_convertida
 
+    if domingo_nao_permitido(nova_data):
+        return jsonify({
+            "erro": "Não são permitidas consultas aos domingos"
+        }), 400
+
     nova_hora = consulta.hora
+
     if nova_hora_str is not None:
         hora_convertida = normalizar_hora(nova_hora_str)
+
         if hora_convertida is None:
-            return jsonify({"erro": "Hora inválida. Use o formato HH:MM"}), 400
+            return jsonify({
+                "erro": "Hora inválida. Use o formato HH:MM"
+            }), 400
+
         nova_hora = hora_convertida
 
-    if existe_conflito_veterinario(consulta.veterinario_id, nova_data, nova_hora, ignorar_id=id):
-        return jsonify({"erro": "Veterinário já possui consulta agendada neste horário"}), 409
+    if existe_conflito_veterinario(
+        consulta.veterinario_id,
+        nova_data,
+        nova_hora,
+        ignorar_id=id,
+    ):
+        return jsonify({
+            "erro": "Veterinário já possui consulta agendada neste horário"
+        }), 409
 
-    if existe_conflito_pet(consulta.pet_id, nova_data, nova_hora, ignorar_id=id):
-        return jsonify({"erro": "Pet já possui consulta agendada neste horário"}), 409
+    if existe_conflito_pet(
+        consulta.pet_id,
+        nova_data,
+        nova_hora,
+        ignorar_id=id,
+    ):
+        return jsonify({
+            "erro": "Pet já possui consulta agendada neste horário"
+        }), 409
 
     consulta.data = nova_data
     consulta.hora = nova_hora
@@ -328,11 +457,14 @@ def remarcar_consulta(id):
     }), 200
 
 
-@consultas_bp.route("/consultas/<int:id>/cancelar", methods=["PUT", "PATCH", "POST"])
+@consultas_bp.route(
+    "/consultas/<int:id>/cancelar",
+    methods=["PUT", "PATCH", "POST"],
+)
 def cancelar_consulta(id):
     consulta = db.session.get(Consulta, id)
 
-    if not consulta:
+    if consulta is None:
         return jsonify({"erro": "Consulta não encontrada"}), 404
 
     if consulta.status == "Cancelada":
@@ -351,10 +483,12 @@ def cancelar_consulta(id):
 def excluir_consulta(id):
     consulta = db.session.get(Consulta, id)
 
-    if not consulta:
+    if consulta is None:
         return jsonify({"erro": "Consulta não encontrada"}), 404
 
     db.session.delete(consulta)
     db.session.commit()
 
-    return jsonify({"mensagem": "Consulta excluída com sucesso"}), 200
+    return jsonify({
+        "mensagem": "Consulta excluída com sucesso"
+    }), 200

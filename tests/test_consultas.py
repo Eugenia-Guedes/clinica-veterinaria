@@ -470,3 +470,55 @@ def test_excluir_pet_exclui_consultas_em_cascata(client):
     assert del_pet.status_code == 200
 
     assert client.get(f"/consultas/{c_id}").status_code == 404
+# ---------- REGRA: DOMINGO NÃO PERMITIDO ----------
+
+def test_criar_consulta_no_domingo_retorna_400(client):
+    tutor_id = criar_tutor(client)
+    pet_id = criar_pet(client, tutor_id)
+    vet_id = criar_veterinario(client)
+
+    resposta = criar_consulta(
+        client,
+        pet_id,
+        vet_id,
+        data="2026-11-08"
+    )
+
+    assert resposta.status_code == 400
+    assert "domingo" in resposta.json["erro"].lower()
+
+
+def test_atualizar_consulta_para_domingo_retorna_400(client):
+    tutor_id = criar_tutor(client)
+    pet_id = criar_pet(client, tutor_id)
+    vet_id = criar_veterinario(client)
+
+    consulta_id = criar_consulta(
+        client, pet_id, vet_id
+    ).json["consulta"]["id"]
+
+    resposta = client.put(
+        f"/consultas/{consulta_id}",
+        json={"data": "2026-11-08"}
+    )
+
+    assert resposta.status_code == 400
+    assert "domingo" in resposta.json["erro"].lower()
+
+
+def test_remarcar_consulta_para_domingo_retorna_400(client):
+    tutor_id = criar_tutor(client)
+    pet_id = criar_pet(client, tutor_id)
+    vet_id = criar_veterinario(client)
+
+    consulta_id = criar_consulta(
+        client, pet_id, vet_id
+    ).json["consulta"]["id"]
+
+    resposta = client.patch(
+        f"/consultas/{consulta_id}/remarcar",
+        json={"data": "2026-11-08"}
+    )
+
+    assert resposta.status_code == 400
+    assert "domingo" in resposta.json["erro"].lower()
