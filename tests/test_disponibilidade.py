@@ -326,3 +326,28 @@ def test_verificar_com_formato_invalido_retorna_400(client):
     )
 
     assert resposta.status_code == 400
+# ---------- REGRA: DOMINGO NÃO PERMITIDO ----------
+
+def test_criar_disponibilidade_no_domingo_retorna_400(client):
+    vet_id = criar_veterinario(client)
+
+    resposta = criar_disponibilidade(
+        client,
+        vet_id,
+        dia_semana="domingo"
+    )
+
+    assert resposta.status_code == 400
+    assert "domingo" in resposta.json["erro"].lower()
+
+
+def test_verificar_disponibilidade_no_domingo_retorna_indisponivel(client):
+    vet_id = criar_veterinario(client)
+
+    resposta = client.get(
+        f"/disponibilidade/verificar?veterinario_id={vet_id}"
+        "&data=2026-11-08&hora=09:00"
+    )
+
+    assert resposta.status_code == 200
+    assert resposta.json["disponivel"] is False

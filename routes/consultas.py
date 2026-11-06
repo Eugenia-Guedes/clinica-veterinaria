@@ -350,6 +350,11 @@ def cadastrar_consulta():
             "erro": "Data inválida. Use o formato AAAA-MM-DD"
         }), 400
 
+    if domingo_nao_permitido(data_obj):
+        return jsonify({
+            "erro": "Não são permitidas consultas aos domingos"
+        }), 400
+
     hora_formatada = normalizar_hora(hora_str)
 
     if hora_formatada is None:
@@ -616,6 +621,11 @@ def remarcar_consulta(id):
             }), 400
 
         nova_data = data_convertida
+
+    if domingo_nao_permitido(nova_data):
+        return jsonify({
+            "erro": "Não são permitidas consultas aos domingos"
+        }), 400
 
     nova_hora = consulta.hora
 
