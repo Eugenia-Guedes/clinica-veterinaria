@@ -161,6 +161,11 @@ def erro_banco(exc):
 # Regras de agenda (consideram o intervalo inteiro)
 # ----------------------------------------------------------
 
+def domingo_nao_permitido(data_obj):
+    """Verifica se a data corresponde a um domingo."""
+    return data_obj.weekday() == 6
+
+
 def veterinario_disponivel(
     veterinario_id,
     data_consulta,
@@ -549,14 +554,20 @@ def atualizar_consulta(id):
 
         novo_status = status_validado
 
+    
     if novo_status != "Cancelada":
-        erro_agenda = validar_agenda(
-            novo_vet_id, novo_pet_id, nova_data,
-            nova_hora, nova_duracao, ignorar_id=id
-        )
+        if domingo_nao_permitido(nova_data):
+            return jsonify({
+                "erro": "Não são permitidas consultas aos domingos"
+        }), 400
 
-        if erro_agenda:
-            return jsonify({"erro": erro_agenda}), 409
+    erro_agenda = validar_agenda(
+        novo_vet_id, novo_pet_id, nova_data,
+        nova_hora, nova_duracao, ignorar_id=id
+    )
+
+    if erro_agenda:
+        return jsonify({"erro": erro_agenda}), 409
 
     consulta.pet_id = novo_pet_id
     consulta.veterinario_id = novo_vet_id
