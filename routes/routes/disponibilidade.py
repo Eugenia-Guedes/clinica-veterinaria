@@ -1,7 +1,10 @@
+
 import unicodedata
 from datetime import datetime
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import SQLAlchemyError
+
 from extensions import db
 from models.disponibilidade import Disponibilidade
 from models.veterinario import Veterinario
@@ -14,40 +17,52 @@ from routes.consultas import (
 
 disponibilidade_bp = Blueprint("disponibilidade", __name__)
 
-# Ordem igual ao datetime.weekday(): segunda = 0 ... domingo = 6
-DIAS_SEMANA = ["segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo"]
+DIAS_SEMANA = (
+    "segunda",
+    "terca",
+    "quarta",
+    "quinta",
+    "sexta",
+    "sabado",
+    "domingo",
+)
+
+DIA_DOMINGO = "domingo"
 
 
 def disponibilidade_para_dict(disponibilidade):
-    """Transforma um objeto Disponibilidade em um dicionário para virar JSON."""
+    """Converte uma disponibilidade em dicionário para resposta JSON."""
     return {
         "id": disponibilidade.id,
         "veterinario_id": disponibilidade.veterinario_id,
         "dia_semana": disponibilidade.dia_semana,
         "hora_inicio": disponibilidade.hora_inicio,
-        "hora_fim": disponibilidade.hora_fim
+        "hora_fim": disponibilidade.hora_fim,
     }
 
 
 def inteiro_valido(valor):
-    """True só para inteiros de verdade (True/False também são int no Python)."""
+    """Aceita inteiros, mas rejeita valores booleanos."""
     return isinstance(valor, int) and not isinstance(valor, bool)
 
 
 def normalizar_dia(valor):
-    """Aceita 'Segunda', 'terça', 'SABADO'... e devolve 'segunda', 'terca', 'sabado'.
-    Se não for um dia válido, devolve None."""
+    """Normaliza o nome do dia, removendo acentos e espaços."""
     if not isinstance(valor, str):
         return None
 
     texto = unicodedata.normalize("NFD", valor.strip().lower())
-    texto = "".join(c for c in texto if unicodedata.category(c) != "Mn")
+    texto = "".join(
+        caractere
+        for caractere in texto
+        if unicodedata.category(caractere) != "Mn"
+    )
 
     return texto if texto in DIAS_SEMANA else None
 
 
 def normalizar_hora(valor):
-    """Converte '8:00' ou '08:00' em '08:00'. Se for inválida, devolve None."""
+    """Valida e normaliza um horário para o formato HH:MM."""
     try:
         return datetime.strptime(valor, "%H:%M").strftime("%H:%M")
     except (ValueError, TypeError):
@@ -55,25 +70,36 @@ def normalizar_hora(valor):
 
 
 def validar_horarios(hora_inicio, hora_fim):
+    """Verifica se os horários são válidos e se o início precede o fim."""
     inicio = normalizar_hora(hora_inicio)
     fim = normalizar_hora(hora_fim)
 
-    if inicio is None or fim is None:
-        return False
-
-    return inicio < fim
+    return inicio is not None and fim is not None and inicio < fim
 
 
 def veterinario_existe(veterinario_id):
-    """Verifica se existe um veterinário cadastrado com esse id."""
+    """Verifica se o veterinário está cadastrado."""
     return db.session.get(Veterinario, veterinario_id) is not None
 
 
-def ja_existe(veterinario_id, dia_semana, ignorar_id=None):
-    """Verifica se o veterinário já tem disponibilidade cadastrada nesse dia."""
-    consulta = Disponibilidade.query.filter_by(
-        veterinario_id=veterinario_id,
-        dia_semana=dia_semana
+def existe_sobreposicao(
+    veterinario_id,
+    dia_semana,
+    hora_inicio,
+    hora_fim,
+    ignorar_id=None,
+):
+    """
+    Verifica se existe outro período que se sobrepõe ao informado.
+
+    Períodos consecutivos são permitidos:
+    08:00–12:00 e 12:00–16:00.
+    """
+    consulta = Disponibilidade.query.filter(
+        Disponibilidade.veterinario_id == veterinario_id,
+        Disponibilidade.dia_semana == dia_semana,
+        Disponibilidade.hora_inicio < hora_fim,
+        Disponibilidade.hora_fim > hora_inicio,
     )
 
     if ignorar_id is not None:
@@ -82,59 +108,104 @@ def ja_existe(veterinario_id, dia_semana, ignorar_id=None):
     return consulta.first() is not None
 
 
-@disponibilidade_bp.route("/disponibilidade", methods=["POST"])
-def cadastrar_disponibilidade():
-    dados = request.get_json()
+def validar_dados_disponibilidade(
+    veterinario_id,
+    dia_semana,
+    hora_inicio,
+    hora_fim,
+    ignorar_id=None,
+):
+    """
+    Valida os dados de uma disponibilidade.
 
-    if not dados:
-        return jsonify({"erro": "Dados não enviados"}), 400
-
-    veterinario_id = dados.get("veterinario_id")
-    dia_semana = dados.get("dia_semana")
-    hora_inicio = dados.get("hora_inicio")
-    hora_fim = dados.get("hora_fim")
-
-    if veterinario_id is None or not dia_semana or not hora_inicio or not hora_fim:
-        return jsonify({
-            "erro": "veterinario_id, dia_semana, hora_inicio e hora_fim são obrigatórios"
-        }), 400
-
+    Retorna uma mensagem de erro ou None quando os dados são válidos.
+    """
     if not inteiro_valido(veterinario_id):
-        return jsonify({"erro": "veterinario_id deve ser um número inteiro"}), 400
+        return "veterinario_id deve ser um número inteiro", 400
 
     dia_normalizado = normalizar_dia(dia_semana)
 
     if dia_normalizado is None:
-        return jsonify({
-            "erro": "Dia da semana inválido. Use: segunda, terca, quarta, quinta, sexta, sabado ou domingo"
-        }), 400
+        return "Dia da semana inválido", 400
 
-    if not validar_horarios(hora_inicio, hora_fim):
-        return jsonify({
-            "erro": "Horários inválidos. Use HH:MM e informe o início antes do fim"
-        }), 400
+    if dia_normalizado == DIA_DOMINGO:
+        return "Não é permitido cadastrar disponibilidade aos domingos", 400
+
+    inicio = normalizar_hora(hora_inicio)
+    fim = normalizar_hora(hora_fim)
+
+    if inicio is None or fim is None or inicio >= fim:
+        return "Horários inválidos. Use HH:MM e informe o início antes do fim", 400
 
     if not veterinario_existe(veterinario_id):
-        return jsonify({"erro": "Veterinário não encontrado"}), 404
+        return "Veterinário não encontrado", 404
 
-    if ja_existe(veterinario_id, dia_normalizado):
-        return jsonify({
-            "erro": "Já existe disponibilidade para esse veterinário nesse dia"
-        }), 409
+    if existe_sobreposicao(
+        veterinario_id,
+        dia_normalizado,
+        inicio,
+        fim,
+        ignorar_id,
+    ):
+        return "O horário informado se sobrepõe a outra disponibilidade", 409
 
-    nova = Disponibilidade(
-        veterinario_id=veterinario_id,
-        dia_semana=dia_normalizado,
-        hora_inicio=normalizar_hora(hora_inicio),
-        hora_fim=normalizar_hora(hora_fim)
+    return None, None
+
+
+def salvar_alteracao():
+    """Confirma a transação ou desfaz alterações em caso de falha."""
+    try:
+        db.session.commit()
+        return True
+    except SQLAlchemyError:
+        db.session.rollback()
+        return False
+
+
+@disponibilidade_bp.route("/disponibilidade", methods=["POST"])
+def cadastrar_disponibilidade():
+    dados = request.get_json(silent=True)
+
+    if not isinstance(dados, dict):
+        return jsonify({"erro": "Envie um objeto JSON válido"}), 400
+
+    campos_obrigatorios = (
+        "veterinario_id",
+        "dia_semana",
+        "hora_inicio",
+        "hora_fim",
     )
 
-    db.session.add(nova)
-    db.session.commit()
+    if any(campo not in dados for campo in campos_obrigatorios):
+        return jsonify({
+            "erro": "veterinario_id, dia_semana, hora_inicio e hora_fim são obrigatórios"
+        }), 400
+
+    erro, status = validar_dados_disponibilidade(
+        dados["veterinario_id"],
+        dados["dia_semana"],
+        dados["hora_inicio"],
+        dados["hora_fim"],
+    )
+
+    if erro:
+        return jsonify({"erro": erro}), status
+
+    nova_disponibilidade = Disponibilidade(
+        veterinario_id=dados["veterinario_id"],
+        dia_semana=normalizar_dia(dados["dia_semana"]),
+        hora_inicio=normalizar_hora(dados["hora_inicio"]),
+        hora_fim=normalizar_hora(dados["hora_fim"]),
+    )
+
+    db.session.add(nova_disponibilidade)
+
+    if not salvar_alteracao():
+        return jsonify({"erro": "Não foi possível cadastrar a disponibilidade"}), 500
 
     return jsonify({
         "mensagem": "Disponibilidade cadastrada com sucesso",
-        "disponibilidade": disponibilidade_para_dict(nova)
+        "disponibilidade": disponibilidade_para_dict(nova_disponibilidade),
     }), 201
 
 
@@ -142,26 +213,28 @@ def cadastrar_disponibilidade():
 def listar_disponibilidades():
     veterinario_id = request.args.get("veterinario_id", type=int)
 
+    consulta = Disponibilidade.query
+
     if veterinario_id is not None:
-        disponibilidades = Disponibilidade.query.filter_by(
-            veterinario_id=veterinario_id
-        ).all()
-    else:
-        disponibilidades = Disponibilidade.query.all()
+        consulta = consulta.filter_by(veterinario_id=veterinario_id)
 
-    resultado = []
+    disponibilidades = consulta.order_by(
+        Disponibilidade.veterinario_id,
+        Disponibilidade.dia_semana,
+        Disponibilidade.hora_inicio,
+    ).all()
 
-    for item in disponibilidades:
-        resultado.append(disponibilidade_para_dict(item))
-
-    return jsonify(resultado), 200
+    return jsonify([
+        disponibilidade_para_dict(item)
+        for item in disponibilidades
+    ]), 200
 
 
 @disponibilidade_bp.route("/disponibilidade/<int:id>", methods=["GET"])
 def buscar_disponibilidade(id):
     disponibilidade = db.session.get(Disponibilidade, id)
 
-    if not disponibilidade:
+    if disponibilidade is None:
         return jsonify({"erro": "Disponibilidade não encontrada"}), 404
 
     return jsonify(disponibilidade_para_dict(disponibilidade)), 200
@@ -171,63 +244,53 @@ def buscar_disponibilidade(id):
 def atualizar_disponibilidade(id):
     disponibilidade = db.session.get(Disponibilidade, id)
 
-    if not disponibilidade:
+    if disponibilidade is None:
         return jsonify({"erro": "Disponibilidade não encontrada"}), 404
 
-    dados = request.get_json()
+    dados = request.get_json(silent=True)
 
-    if not dados:
-        return jsonify({"erro": "Dados não enviados"}), 400
+    if not isinstance(dados, dict) or not dados:
+        return jsonify({"erro": "Envie um objeto JSON válido com os dados da atualização"}), 400
 
-    # Começa com os valores atuais e troca só o que veio no JSON.
-    # Nada é gravado no objeto antes de validar tudo.
-    veterinario_id = disponibilidade.veterinario_id
-    dia_semana = disponibilidade.dia_semana
-    hora_inicio = disponibilidade.hora_inicio
-    hora_fim = disponibilidade.hora_fim
+    veterinario_id = dados.get(
+        "veterinario_id",
+        disponibilidade.veterinario_id,
+    )
+    dia_semana = dados.get(
+        "dia_semana",
+        disponibilidade.dia_semana,
+    )
+    hora_inicio = dados.get(
+        "hora_inicio",
+        disponibilidade.hora_inicio,
+    )
+    hora_fim = dados.get(
+        "hora_fim",
+        disponibilidade.hora_fim,
+    )
 
-    if "veterinario_id" in dados:
-        if not inteiro_valido(dados["veterinario_id"]):
-            return jsonify({"erro": "veterinario_id deve ser um número inteiro"}), 400
-        veterinario_id = dados["veterinario_id"]
+    erro, status = validar_dados_disponibilidade(
+        veterinario_id,
+        dia_semana,
+        hora_inicio,
+        hora_fim,
+        ignorar_id=id,
+    )
 
-    if "dia_semana" in dados:
-        dia_semana = normalizar_dia(dados["dia_semana"])
-
-        if dia_semana is None:
-            return jsonify({
-                "erro": "Dia da semana inválido. Use: segunda, terca, quarta, quinta, sexta, sabado ou domingo"
-            }), 400
-
-    if "hora_inicio" in dados:
-        hora_inicio = dados["hora_inicio"]
-
-    if "hora_fim" in dados:
-        hora_fim = dados["hora_fim"]
-
-    if not validar_horarios(hora_inicio, hora_fim):
-        return jsonify({
-            "erro": "Horários inválidos. Use HH:MM e informe o início antes do fim"
-        }), 400
-
-    if not veterinario_existe(veterinario_id):
-        return jsonify({"erro": "Veterinário não encontrado"}), 404
-
-    if ja_existe(veterinario_id, dia_semana, ignorar_id=id):
-        return jsonify({
-            "erro": "Já existe disponibilidade para esse veterinário nesse dia"
-        }), 409
+    if erro:
+        return jsonify({"erro": erro}), status
 
     disponibilidade.veterinario_id = veterinario_id
-    disponibilidade.dia_semana = dia_semana
+    disponibilidade.dia_semana = normalizar_dia(dia_semana)
     disponibilidade.hora_inicio = normalizar_hora(hora_inicio)
     disponibilidade.hora_fim = normalizar_hora(hora_fim)
 
-    db.session.commit()
+    if not salvar_alteracao():
+        return jsonify({"erro": "Não foi possível atualizar a disponibilidade"}), 500
 
     return jsonify({
         "mensagem": "Disponibilidade atualizada com sucesso",
-        "disponibilidade": disponibilidade_para_dict(disponibilidade)
+        "disponibilidade": disponibilidade_para_dict(disponibilidade),
     }), 200
 
 
@@ -235,13 +298,17 @@ def atualizar_disponibilidade(id):
 def excluir_disponibilidade(id):
     disponibilidade = db.session.get(Disponibilidade, id)
 
-    if not disponibilidade:
+    if disponibilidade is None:
         return jsonify({"erro": "Disponibilidade não encontrada"}), 404
 
     db.session.delete(disponibilidade)
-    db.session.commit()
 
-    return jsonify({"mensagem": "Disponibilidade excluída com sucesso"}), 200
+    if not salvar_alteracao():
+        return jsonify({"erro": "Não foi possível excluir a disponibilidade"}), 500
+
+    return jsonify({
+        "mensagem": "Disponibilidade excluída com sucesso"
+    }), 200
 
 
 
@@ -256,10 +323,13 @@ def verificar_disponibilidade():
             "erro": "veterinario_id, data e hora são obrigatórios"
         }), 400
 
+    if veterinario_id <= 0:
+        return jsonify({"erro": "veterinario_id deve ser positivo"}), 400
+
     try:
         data_consulta = datetime.strptime(data, "%Y-%m-%d")
         hora_consulta = datetime.strptime(hora, "%H:%M")
-    except ValueError:
+    except (ValueError, TypeError):
         return jsonify({
             "erro": "Data deve estar no formato AAAA-MM-DD e hora no formato HH:MM"
         }), 400
