@@ -62,7 +62,28 @@ def criar_veterinario(
         "especialidade": especialidade,
     })
     assert resposta.status_code == 201
-    return resposta.json["veterinario"]["id"]
+
+    veterinario_id = resposta.json["veterinario"]["id"]
+
+    # Cadastra o expediente padrão para os testes de consultas
+    for dia in [
+        "segunda",
+        "terca",
+        "quarta",
+        "quinta",
+        "sexta",
+        "sabado",
+    ]:
+        disponibilidade = client.post("/disponibilidade", json={
+            "veterinario_id": veterinario_id,
+            "dia_semana": dia,
+            "hora_inicio": "08:00",
+            "hora_fim": "18:00",
+        })
+
+    assert disponibilidade.status_code == 201, disponibilidade.get_json()
+
+    return veterinario_id
 
 
 def criar_consulta(client, pet_id, veterinario_id, **campos):
@@ -88,6 +109,7 @@ def test_criar_consulta_com_sucesso(client):
     resposta = criar_consulta(client, pet_id, vet_id)
 
     assert resposta.status_code == 201
+
     consulta = resposta.json["consulta"]
     assert consulta["id"] is not None
     assert consulta["pet_id"] == pet_id
