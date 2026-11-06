@@ -212,3 +212,78 @@ def test_fluxo_completo_agendamento_consulta(client):
 
     assert resposta_final.status_code == 200
     assert resposta_final.json["status"] == "Cancelada"
+
+def test_nao_permitir_consulta_fora_do_expediente(client):
+
+    # 1. Cadastrar usuário
+    resposta_usuario = client.post("/usuarios", json={
+        "nome": "Carlos Silva",
+        "email": "carlos.agendamento@teste.com",
+        "telefone": "83999999999",
+        "senha": "SenhaSegura123"
+    })
+
+    assert resposta_usuario.status_code == 201
+    usuario_id = resposta_usuario.json["usuario"]["id"]
+
+    # 2. Cadastrar pet
+    resposta_pet = client.post("/pets", json={
+        "nome": "Bob",
+        "especie": "Cachorro",
+        "sexo": "M",
+        "usuario_id": usuario_id
+    })
+
+    assert resposta_pet.status_code == 201
+    pet_id = resposta_pet.json["pet"]["id"]
+
+    # 3. Cadastrar veterinário
+    resposta_veterinario = client.post("/veterinarios", json={
+        "nome": "Dr. Pedro",
+        "especialidade": "Clínica Geral"
+    })
+
+    assert resposta_veterinario.status_code == 201
+    veterinario_id = resposta_veterinario.json["veterinario"]["id"]
+
+    # 4. Cadastrar expediente das 08h às 12h
+    resposta_disponibilidade = client.post(
+        "/disponibilidade",
+        json={
+            "veterinario_id": veterinario_id,
+            "dia_semana": "segunda",
+            "hora_inicio": "08:00",
+            "hora_fim": "12:00"
+        }
+    )
+
+    assert resposta_disponibilidade.status_code == 201
+
+    # 5. Verificar disponibilidade às 15h
+    resposta_verificacao = client.get(
+        "/disponibilidade/verificar",
+        query_string={
+            "veterinario_id": veterinario_id,
+            "data": "2026-11-02",
+            "hora": "15:00"
+        }
+    )
+
+    assert resposta_verificacao.status_code == 200
+    assert resposta_verificacao.json["disponivel"] is False
+
+    # 6. Tentar agendar consulta fora do expediente
+    resposta_consulta = client.post("/consultas", json={
+        "pet_id": pet_id,
+        "veterinario_id": veterinario_id,
+        "data": "2026-11-02",
+        "hora": "15:00",
+        "motivo": "Consulta de rotina"
+    })
+
+    # O sistema deveria recusar o agendamento
+    assert resposta_consulta.status_code in (400, 409), (
+        "Falha: o sistema permitiu agendar uma consulta "
+        "fora do expediente do veterinário. "
+        f"Status recebido: {resposta_consulta.status_code}"
+    )
