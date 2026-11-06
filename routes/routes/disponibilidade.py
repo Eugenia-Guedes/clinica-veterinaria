@@ -8,7 +8,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from extensions import db
 from models.disponibilidade import Disponibilidade
 from models.veterinario import Veterinario
-
+from routes.consultas import (
+    DURACAO_PADRAO,
+    validar_duracao,
+    veterinario_disponivel,
+    existe_conflito_veterinario,
+)
 
 disponibilidade_bp = Blueprint("disponibilidade", __name__)
 
@@ -306,6 +311,7 @@ def excluir_disponibilidade(id):
     }), 200
 
 
+
 @disponibilidade_bp.route("/disponibilidade/verificar", methods=["GET"])
 def verificar_disponibilidade():
     veterinario_id = request.args.get("veterinario_id", type=int)
@@ -328,31 +334,52 @@ def verificar_disponibilidade():
             "erro": "Data deve estar no formato AAAA-MM-DD e hora no formato HH:MM"
         }), 400
 
-    if data_consulta.weekday() == 6:
+    # Duracao padrao de 30 minutos
+    duracao_texto = request.args.get("duracao_minutos")
+
+    if duracao_texto is None:
+        duracao = DURACAO_PADRAO
+    else:
+        try:
+            duracao = int(duracao_texto)
+        except ValueError:
+            return jsonify({
+                "erro": "Duração inválida. Use 30, 45 ou 60 minutos"
+            }), 400
+
+    if not validar_duracao(duracao):
+        return jsonify({
+            "erro": "Duração inválida. Use 30, 45 ou 60 minutos"
+        }), 400
+
+    data_obj = data_consulta.date()
+    hora_str = hora_consulta.strftime("%H:%M")
+
+    # Verifica se toda a consulta cabe no expediente
+    if not veterinario_disponivel(
+        veterinario_id,
+        data_obj,
+        hora_str,
+        duracao
+    ):
         return jsonify({
             "disponivel": False,
-            "mensagem": "Não há atendimento aos domingos",
+            "mensagem": "Consulta fora do expediente disponível"
         }), 200
 
-    if not veterinario_existe(veterinario_id):
-        return jsonify({"erro": "Veterinário não encontrado"}), 404
-
-    dia_semana = DIAS_SEMANA[data_consulta.weekday()]
-    hora_formatada = hora_consulta.strftime("%H:%M")
-
-    disponibilidades = Disponibilidade.query.filter_by(
-        veterinario_id=veterinario_id,
-        dia_semana=dia_semana,
-    ).all()
-
-    for item in disponibilidades:
-        if item.hora_inicio <= hora_formatada < item.hora_fim:
-            return jsonify({
-                "disponivel": True,
-                "mensagem": "Horário disponível",
-            }), 200
+    # Verifica conflito com consultas existentes
+    if existe_conflito_veterinario(
+        veterinario_id,
+        data_obj,
+        hora_str,
+        duracao
+    ):
+        return jsonify({
+            "disponivel": False,
+            "mensagem": "Veterinário já possui consulta neste horário"
+        }), 200
 
     return jsonify({
-        "disponivel": False,
-        "mensagem": "Horário não disponível",
+        "disponivel": True,
+        "mensagem": "Horário disponível"
     }), 200
