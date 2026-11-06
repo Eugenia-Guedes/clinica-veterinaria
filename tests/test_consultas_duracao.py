@@ -247,7 +247,8 @@ def test_consulta_antes_do_inicio_do_expediente_e_rejeitada(
 def test_consulta_no_domingo_e_rejeitada(client, cenario):
     resposta = agendar(client, cenario, data=DOMINGO)
 
-    assert resposta.status_code == 409
+    assert resposta.status_code == 400
+    assert "domingo" in resposta.get_json()["erro"].lower()
 
 
 # ----------------------------------------------------------
