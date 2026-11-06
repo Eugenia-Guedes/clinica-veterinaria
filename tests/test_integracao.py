@@ -287,3 +287,71 @@ def test_nao_permitir_consulta_fora_do_expediente(client):
         "fora do expediente do veterinário. "
         f"Status recebido: {resposta_consulta.status_code}"
     )
+
+    
+def test_disponibilidade_considera_consultas_agendadas(client):
+    # Cadastrar tutor
+    resposta = client.post("/usuarios", json={
+        "nome": "Maria Silva",
+        "email": "maria.disponibilidade@teste.com",
+        "telefone": "83999999999",
+        "senha": "Senha12345"
+    })
+    assert resposta.status_code == 201
+    usuario_id = resposta.json["usuario"]["id"]
+
+    # Cadastrar pet
+    resposta = client.post("/pets", json={
+        "nome": "Rex",
+        "especie": "Cachorro",
+        "sexo": "Macho",
+        "usuario_id": usuario_id
+    })
+    assert resposta.status_code == 201
+    pet_id = resposta.json["pet"]["id"]
+
+    # Cadastrar veterinario
+    resposta = client.post("/veterinarios", json={
+        "nome": "Dr. Carlos",
+        "especialidade": "Clinica Geral"
+    })
+    assert resposta.status_code == 201
+    veterinario_id = resposta.json["veterinario"]["id"]
+
+    # Cadastrar expediente na segunda-feira
+    resposta = client.post("/disponibilidade", json={
+        "veterinario_id": veterinario_id,
+        "dia_semana": "segunda",
+        "hora_inicio": "08:00",
+        "hora_fim": "12:00"
+    })
+    assert resposta.status_code == 201
+
+    # Agendar consulta das 09:00 as 09:30
+    resposta = client.post("/consultas", json={
+        "pet_id": pet_id,
+        "veterinario_id": veterinario_id,
+        "data": "2026-11-02",
+        "hora": "09:00",
+        "duracao_minutos": 30,
+        "motivo": "Consulta de rotina"
+    })
+    assert resposta.status_code == 201, resposta.get_json()
+
+    # Verificar horario dentro da consulta existente
+    resposta = client.get(
+        "/disponibilidade/verificar",
+        query_string={
+            "veterinario_id": veterinario_id,
+            "data": "2026-11-02",
+            "hora": "09:15"
+        }
+    )
+
+    assert resposta.status_code == 200
+
+    assert resposta.json["disponivel"] is False, (
+        "Falha: a API informou que o horario esta disponivel, "
+        "mas o veterinario ja possui uma consulta agendada "
+        "das 09:00 as 09:30."
+    )
