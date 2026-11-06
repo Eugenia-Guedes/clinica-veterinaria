@@ -355,3 +355,131 @@ def test_disponibilidade_considera_consultas_agendadas(client):
         "mas o veterinario ja possui uma consulta agendada "
         "das 09:00 as 09:30."
     )
+
+
+def test_disponibilidade_respeita_duracao_consulta(client):
+    # Cadastrar veterinario
+    resposta = client.post("/veterinarios", json={
+        "nome": "Dra. Ana",
+        "especialidade": "Clinica Geral"
+    })
+    assert resposta.status_code == 201
+    veterinario_id = resposta.json["veterinario"]["id"]
+
+    # Expediente de segunda-feira: 08:00 as 12:00
+    resposta = client.post("/disponibilidade", json={
+        "veterinario_id": veterinario_id,
+        "dia_semana": "segunda",
+        "hora_inicio": "08:00",
+        "hora_fim": "12:00"
+    })
+    assert resposta.status_code == 201
+
+    # Horarios e duracoes que queremos verificar
+    cenarios = [
+        ("11:30", 30, True),
+        ("11:30", 45, False),
+        ("11:15", 45, True),
+        ("11:15", 60, False),
+        ("11:00", 60, True),
+        ("11:00", 20, None),
+    ]
+
+    for hora, duracao, esperado in cenarios:
+        resposta = client.get(
+            "/disponibilidade/verificar",
+            query_string={
+                "veterinario_id": veterinario_id,
+                "data": "2026-11-02",
+                "hora": hora,
+                "duracao_minutos": duracao
+            }
+        )
+
+        if esperado is None:
+            assert resposta.status_code == 400
+        else:
+            assert resposta.status_code == 200
+            assert resposta.json["disponivel"] is esperado, (
+                f"Falha no horario {hora}, "
+                f"duracao {duracao} minutos: "
+                f"{resposta.json}"
+            )
+
+            
+def test_disponibilidade_conflito_duracoes_diferentes(client):
+    # Cadastrar tutor
+    resposta = client.post("/usuarios", json={
+        "nome": "Joao Silva",
+        "email": "joao.duracoes@teste.com",
+        "telefone": "83999999999",
+        "senha": "Senha12345"
+    })
+    assert resposta.status_code == 201
+    usuario_id = resposta.json["usuario"]["id"]
+
+    # Cadastrar pet
+    resposta = client.post("/pets", json={
+        "nome": "Rex",
+        "especie": "Cachorro",
+        "sexo": "Macho",
+        "usuario_id": usuario_id
+    })
+    assert resposta.status_code == 201
+    pet_id = resposta.json["pet"]["id"]
+
+    # Cadastrar veterinario
+    resposta = client.post("/veterinarios", json={
+        "nome": "Dr. Pedro",
+        "especialidade": "Clinica Geral"
+    })
+    assert resposta.status_code == 201
+    veterinario_id = resposta.json["veterinario"]["id"]
+
+    # Expediente das 08:00 as 12:00
+    resposta = client.post("/disponibilidade", json={
+        "veterinario_id": veterinario_id,
+        "dia_semana": "segunda",
+        "hora_inicio": "08:00",
+        "hora_fim": "12:00"
+    })
+    assert resposta.status_code == 201
+
+    # Consulta existente das 10:00 as 10:30
+    resposta = client.post("/consultas", json={
+        "pet_id": pet_id,
+        "veterinario_id": veterinario_id,
+        "data": "2026-11-02",
+        "hora": "10:00",
+        "duracao_minutos": 30,
+        "motivo": "Consulta de rotina"
+    })
+    assert resposta.status_code == 201, resposta.get_json()
+
+    # Testar sobreposicoes e horarios livres
+    cenarios = [
+        ("09:45", 60, False),  # Sobrepoe a consulta existente
+        ("09:30", 30, True),   # Termina exatamente as 10:00
+        ("10:15", 45, False),  # Comeca durante a consulta
+        ("10:30", 60, True),   # Comeca quando a anterior termina
+    ]
+
+    for hora, duracao, esperado in cenarios:
+        resposta = client.get(
+            "/disponibilidade/verificar",
+            query_string={
+                "veterinario_id": veterinario_id,
+                "data": "2026-11-02",
+                "hora": hora,
+                "duracao_minutos": duracao
+            }
+        )
+
+        assert resposta.status_code == 200
+        assert resposta.json["disponivel"] is esperado, (
+            f"Falha em {hora}, duracao {duracao}: "
+            f"{resposta.json}"
+        )
+
+
+    
