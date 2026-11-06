@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify
 from extensions import db
 from models.disponibilidade import Disponibilidade
 from models.veterinario import Veterinario
+from routes.consultas import existe_conflito_veterinario
 
 
 disponibilidade_bp = Blueprint("disponibilidade", __name__)
@@ -265,16 +266,32 @@ def verificar_disponibilidade():
         dia_semana=dia_semana
     ).all()
 
+    
     for item in disponibilidades:
         inicio = datetime.strptime(item.hora_inicio, "%H:%M")
         fim = datetime.strptime(item.hora_fim, "%H:%M")
 
         if inicio <= hora_consulta < fim:
+
+            # Verifica se existe outra consulta ocupando o intervalo
+            conflito = existe_conflito_veterinario(
+                veterinario_id=veterinario_id,
+                data_obj=data_consulta.date(),
+                hora_str=hora_consulta.strftime("%H:%M"),
+                duracao_minutos=30
+            )
+
+            if conflito:
+                return jsonify({
+                    "disponivel": False,
+                    "mensagem": "Veterinário já possui consulta neste horário"
+                }), 200
+
             return jsonify({
                 "disponivel": True,
                 "mensagem": "Horário disponível"
             }), 200
-
+        
     return jsonify({
         "disponivel": False,
         "mensagem": "Horário não disponível"
