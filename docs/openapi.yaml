@@ -1,0 +1,47 @@
+
+openapi: 3.0.3
+
+info:
+  title: API Clínica Veterinária
+  version: 1.0.0
+  description: |
+    Documentação da API REST do sistema
+    de gerenciamento de uma clínica veterinária.
+
+    Projeto acadêmico desenvolvido em Flask.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Usuários
+    description: Gerenciamento de usuários
+  - name: Pets
+    description: Gerenciamento de animais
+  - name: Veterinários
+    description: Gerenciamento de veterinários
+  - name: Disponibilidade
+    description: Horários de atendimento
+  - name: Consultas
+    description: Agendamento e gerenciamento de consultas
+
+
+paths:
+  /:
+    get:
+      tags:
+        - Sistema
+      summary: Verificar funcionamento da API
+      description: Retorna uma mensagem confirmando que a API está funcionando.
+      responses:
+        '200':
+          description: API funcionando corretamente
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensagem:
+                    type: string
+
