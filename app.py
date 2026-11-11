@@ -1,7 +1,7 @@
 import os
 from datetime import timedelta
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from extensions import db, jwt
@@ -47,6 +47,39 @@ def create_app(config=None):
     app.register_blueprint(disponibilidade_bp)
     app.register_blueprint(pets_bp)
     app.register_blueprint(consultas_bp)
+
+
+    @app.get("/openapi.yaml")
+    def arquivo_openapi():
+        return send_from_directory(
+            os.path.join(app.root_path, "docs"),
+            "openapi.yaml"
+        )
+
+    @app.get("/docs/")
+    def swagger_ui():
+        return """
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <title>Swagger - Clínica Veterinária</title>
+            <link rel="stylesheet"
+              href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
+            <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script>
+                SwaggerUIBundle({
+                    url: "/openapi.yaml",
+                    dom_id: "#swagger-ui"
+                });
+            </script>
+        </body>
+        </html>
+        """
+
 
     @app.get("/")
     def inicio():
