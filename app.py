@@ -55,6 +55,12 @@ def create_app(config=None):
             os.path.join(app.root_path, "docs"),
             "openapi.yaml"
         )
+    @app.get("/docs/<path:nome_arquivo>")
+    def arquivos_documentacao(nome_arquivo):
+        return send_from_directory(
+            os.path.join(app.root_path, "docs"),
+            nome_arquivo
+        )
 
     @app.get("/docs/")
     def swagger_ui():
@@ -72,7 +78,7 @@ def create_app(config=None):
             <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
             <script>
                 SwaggerUIBundle({
-                    url: "/openapi.yaml",
+                    url: "/docs/openapi.yaml",
                     dom_id: "#swagger-ui"
                 });
             </script>
