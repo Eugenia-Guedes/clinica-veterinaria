@@ -1,0 +1,409 @@
+openapi: 3.0.3
+
+info:
+  title: API Clínica Veterinária - Pets
+  version: 1.0.0
+  description: |
+    Documentação dos endpoints de Pets.
+
+    Todo pet pertence a um tutor (usuário), identificado pelo campo `usuario_id`.
+
+    As rotas de pets não exigem autenticação.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Pets
+    description: Gerenciamento de animais
+
+
+paths:
+  /pets:
+    post:
+      tags:
+        - Pets
+      summary: Cadastrar pet
+      description: |
+        Cadastra um novo pet vinculado a um tutor existente.
+
+        Campos obrigatórios: `nome`, `especie`, `sexo` e `usuario_id`.
+
+        Campos opcionais: `raca` e `data_nascimento` (formato AAAA-MM-DD).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetEntrada'
+            examples:
+              completo:
+                summary: Pet com todos os campos
+                value:
+                  nome: Rex
+                  especie: Cachorro
+                  raca: Golden Retriever
+                  sexo: Macho
+                  data_nascimento: '2022-05-10'
+                  usuario_id: 1
+              minimo:
+                summary: Apenas os campos obrigatórios
+                value:
+                  nome: Mia
+                  especie: Gato
+                  sexo: Fêmea
+                  usuario_id: 1
+      responses:
+        '201':
+          description: Pet cadastrado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetResposta'
+              example:
+                mensagem: Pet cadastrado com sucesso
+                pet:
+                  id: 1
+                  nome: Rex
+                  especie: Cachorro
+                  raca: Golden Retriever
+                  sexo: Macho
+                  data_nascimento: '2022-05-10'
+                  usuario_id: 1
+        '400':
+          description: Dados inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                sem_dados:
+                  summary: Nenhum dado enviado
+                  value:
+                    erro: Dados não enviados
+                campos_obrigatorios:
+                  summary: Campos obrigatórios ausentes
+                  value:
+                    erro: Nome, espécie, sexo e usuario_id são obrigatórios
+                usuario_id_invalido:
+                  summary: usuario_id não é um número inteiro
+                  value:
+                    erro: usuario_id deve ser um número inteiro
+                data_invalida:
+                  summary: Data fora do formato AAAA-MM-DD
+                  value:
+                    erro: Data de nascimento inválida. Use o formato AAAA-MM-DD
+        '404':
+          description: Tutor não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Tutor não encontrado
+
+    get:
+      tags:
+        - Pets
+      summary: Listar pets
+      description: |
+        Lista todos os pets cadastrados.
+
+        Use o parâmetro `usuario_id` para listar apenas os pets de um tutor
+        (por exemplo, na tela "Meus pets").
+
+        Se o tutor não tiver pets, ou não existir, a lista vem vazia.
+        Se `usuario_id` não for um número inteiro, o filtro é ignorado.
+      security: []
+      parameters:
+        - name: usuario_id
+          in: query
+          required: false
+          description: ID do tutor para filtrar os pets
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Lista de pets (pode ser vazia)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pet'
+
+  /pets/{id}:
+    parameters:
+      - $ref: '#/components/parameters/PetId'
+
+    get:
+      tags:
+        - Pets
+      summary: Buscar pet por ID
+      description: Retorna os dados de um pet específico.
+      security: []
+      responses:
+        '200':
+          description: Pet encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+        '404':
+          $ref: '#/components/responses/PetNaoEncontrado'
+
+    put:
+      tags:
+        - Pets
+      summary: Atualizar pet
+      description: |
+        Atualiza os dados de um pet. A atualização é parcial:
+        envie apenas os campos que deseja alterar.
+
+        - `nome`, `especie` e `sexo` não podem ficar vazios.
+        - `raca` e `data_nascimento` podem receber `null` para remover o valor.
+        - Enviar `usuario_id` transfere o pet para outro tutor, que precisa existir.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PetAtualizacao'
+            examples:
+              parcial:
+                summary: Alterar nome e data de nascimento
+                value:
+                  nome: Rex Jr.
+                  data_nascimento: '2022-06-15'
+              transferir:
+                summary: Transferir o pet para outro tutor
+                value:
+                  usuario_id: 2
+      responses:
+        '200':
+          description: Pet atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PetResposta'
+              example:
+                mensagem: Pet atualizado com sucesso
+                pet:
+                  id: 1
+                  nome: Rex Jr.
+                  especie: Cachorro
+                  raca: Golden Retriever
+                  sexo: Macho
+                  data_nascimento: '2022-06-15'
+                  usuario_id: 1
+        '400':
+          description: Dados inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                sem_dados:
+                  summary: Nenhum dado enviado
+                  value:
+                    erro: Dados não enviados
+                nome_vazio:
+                  summary: Nome vazio
+                  value:
+                    erro: O nome não pode ficar vazio
+                especie_vazia:
+                  summary: Espécie vazia
+                  value:
+                    erro: A espécie não pode ficar vazia
+                sexo_vazio:
+                  summary: Sexo vazio
+                  value:
+                    erro: O sexo não pode ficar vazio
+                data_invalida:
+                  summary: Data fora do formato AAAA-MM-DD
+                  value:
+                    erro: Data de nascimento inválida. Use o formato AAAA-MM-DD
+                usuario_id_invalido:
+                  summary: usuario_id não é um número inteiro
+                  value:
+                    erro: usuario_id deve ser um número inteiro
+        '404':
+          description: Pet ou tutor não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                pet_nao_encontrado:
+                  summary: O pet informado na URL não existe
+                  value:
+                    erro: Pet não encontrado
+                tutor_nao_encontrado:
+                  summary: O novo usuario_id não existe
+                  value:
+                    erro: Tutor não encontrado
+
+    delete:
+      tags:
+        - Pets
+      summary: Excluir pet
+      description: |
+        Exclui um pet.
+
+        **Atenção:** as consultas desse pet também são excluídas
+        (exclusão em cascata).
+      security: []
+      responses:
+        '200':
+          description: Pet excluído com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+              example:
+                mensagem: Pet excluído com sucesso
+        '404':
+          $ref: '#/components/responses/PetNaoEncontrado'
+
+
+components:
+  parameters:
+    PetId:
+      name: id
+      in: path
+      required: true
+      description: ID do pet
+      schema:
+        type: integer
+      example: 1
+
+  responses:
+    PetNaoEncontrado:
+      description: Pet não encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            erro: Pet não encontrado
+
+  schemas:
+    Pet:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          example: Rex
+        especie:
+          type: string
+          example: Cachorro
+        raca:
+          type: string
+          nullable: true
+          example: Golden Retriever
+        sexo:
+          type: string
+          example: Macho
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+          example: '2022-05-10'
+        usuario_id:
+          type: integer
+          description: ID do tutor (usuário) dono do pet
+          example: 1
+
+    PetEntrada:
+      type: object
+      required:
+        - nome
+        - especie
+        - sexo
+        - usuario_id
+      properties:
+        nome:
+          type: string
+          example: Rex
+        especie:
+          type: string
+          example: Cachorro
+        raca:
+          type: string
+          nullable: true
+          example: Golden Retriever
+        sexo:
+          type: string
+          example: Macho
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+          description: Formato AAAA-MM-DD
+          example: '2022-05-10'
+        usuario_id:
+          type: integer
+          description: ID de um tutor existente
+          example: 1
+
+    PetAtualizacao:
+      type: object
+      description: Envie apenas os campos que deseja alterar.
+      minProperties: 1
+      properties:
+        nome:
+          type: string
+          description: Não pode ser vazio
+          example: Rex Jr.
+        especie:
+          type: string
+          description: Não pode ser vazia
+          example: Cachorro
+        raca:
+          type: string
+          nullable: true
+          description: Envie null para remover
+          example: Golden Retriever
+        sexo:
+          type: string
+          description: Não pode ser vazio
+          example: Macho
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+          description: Formato AAAA-MM-DD. Envie null para remover.
+          example: '2022-06-15'
+        usuario_id:
+          type: integer
+          description: ID do novo tutor (transfere o pet)
+          example: 2
+
+    PetResposta:
+      type: object
+      properties:
+        mensagem:
+          type: string
+        pet:
+          $ref: '#/components/schemas/Pet'
+
+    Mensagem:
+      type: object
+      properties:
+        mensagem:
+          type: string
+          example: Pet excluído com sucesso
+
+    Erro:
+      type: object
+      properties:
+        erro:
+          type: string
+          example: Pet não encontrado
