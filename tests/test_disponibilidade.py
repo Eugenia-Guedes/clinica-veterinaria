@@ -130,11 +130,36 @@ def test_criar_para_veterinario_inexistente_retorna_404(client):
     assert resposta.status_code == 404
 
 
-def test_criar_duplicada_no_mesmo_dia_retorna_409(client):
+def test_criar_multiplos_periodos_no_mesmo_dia(client):
+    vet_id = criar_veterinario(client)
+    primeiro = criar_disponibilidade(client, vet_id)
+
+    segundo = criar_disponibilidade(
+        client, vet_id, hora_inicio="13:00", hora_fim="17:00"
+    )
+
+    assert primeiro.status_code == 201
+    assert segundo.status_code == 201
+
+
+def test_criar_periodos_adjacentes_no_mesmo_dia(client):
     vet_id = criar_veterinario(client)
     criar_disponibilidade(client, vet_id)
 
-    resposta = criar_disponibilidade(client, vet_id)
+    resposta = criar_disponibilidade(
+        client, vet_id, hora_inicio="12:00", hora_fim="16:00"
+    )
+
+    assert resposta.status_code == 201
+
+
+def test_criar_periodos_sobrepostos_retorna_409(client):
+    vet_id = criar_veterinario(client)
+    criar_disponibilidade(client, vet_id)
+
+    resposta = criar_disponibilidade(
+        client, vet_id, hora_inicio="11:00", hora_fim="14:00"
+    )
 
     assert resposta.status_code == 409
 
