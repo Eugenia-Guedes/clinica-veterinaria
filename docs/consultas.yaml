@@ -1,0 +1,908 @@
+openapi: 3.0.3
+
+info:
+  title: API Clínica Veterinária - Módulo de Consultas e Agendamentos
+  version: 1.0.0
+  description: |
+    Documentação das operações de agendamento e gerenciamento de consultas da clínica veterinária.
+
+    ### Regras de Negócio e Agendamento
+    - **Vínculos obrigatórios**: Uma consulta requer um `pet_id` e um `veterinario_id` existentes e válidos.
+    - **Dias de atendimento**: Não são permitidas consultas aos **domingos**.
+    - **Duração da consulta**: A duração padrão é de **30 minutos**, sendo permitidos os valores de **30**, **45** ou **60 minutos**.
+    - **Disponibilidade do veterinário**: A consulta deve iniciar e terminar inteiramente dentro de um mesmo período de disponibilidade cadastrado para o veterinário. Consultas que ultrapassem a meia-noite não são permitidas.
+    - **Conflito de horários (sobreposição)**:
+      - Um veterinário não pode ter mais de uma consulta no mesmo intervalo de tempo.
+      - Um pet não pode ter mais de uma consulta no mesmo intervalo de tempo.
+      - Consultas canceladas não geram conflito e liberam o horário para novos agendamentos.
+    - **Motivo**: O campo motivo é opcional; caso informado, possui limite máximo de **255 caracteres**.
+    - **Status da consulta**: Pode assumir os seguintes valores: `Agendada`, `Remarcada`, `Cancelada` e `Realizada`.
+    - **Remarcação**:
+      - Permite alterar a data e/ou a hora de uma consulta existente.
+      - A duração original da consulta é preservada.
+      - O novo horário é revalidado com base na disponibilidade do veterinário e ausência de conflitos.
+      - Não é permitido remarcar uma consulta com status `Cancelada`.
+    - **Cancelamento**:
+      - Atualiza o status para `Cancelada`, liberando a agenda.
+      - Não é permitido cancelar uma consulta que já esteja cancelada.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Consultas
+    description: Agendamento, consulta, remarcação, cancelamento e gerenciamento de consultas.
+
+paths:
+  /consultas:
+    post:
+      tags:
+        - Consultas
+      summary: Agendar nova consulta
+      operationId: cadastrarConsulta
+      description: |
+        Realiza o agendamento de uma nova consulta veterinária.
+        
+        Verifica a existência do pet e do veterinário, valida se o horário está dentro
+        do expediente cadastrado e garante que não há sobreposição de horário para o
+        veterinário nem para o pet.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaEntrada'
+            examples:
+              consultaCompleta:
+                summary: Consulta completa com duração personalizada
+                value:
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "14:00"
+                  duracao_minutos: 45
+                  motivo: "Consulta de rotina e vacinação"
+              consultaPadrao:
+                summary: Consulta padrão (30 min, sem motivo)
+                value:
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "09:00"
+      responses:
+        '201':
+          description: Consulta agendada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+              example:
+                mensagem: Consulta agendada com sucesso
+                consulta:
+                  id: 1
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "14:00"
+                  duracao_minutos: 45
+                  hora_fim: "14:45"
+                  motivo: Consulta de rotina e vacinação
+                  status: Agendada
+        '400':
+          description: Dados ausentes ou formato inválido.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                camposObrigatorios:
+                  summary: Campos obrigatórios ausentes
+                  value:
+                    erro: pet_id, veterinario_id, data e hora são obrigatórios
+                tiposInvalidos:
+                  summary: IDs não inteiros
+                  value:
+                    erro: pet_id e veterinario_id devem ser números inteiros
+                duracaoInvalida:
+                  summary: Duração não permitida
+                  value:
+                    erro: "duracao_minutos inválida. Use: 30, 45, 60"
+                motivoLongo:
+                  summary: Motivo excede limite de caracteres
+                  value:
+                    erro: motivo deve ter no máximo 255 caracteres
+                dataFormatInvalido:
+                  summary: Formato de data incorreto
+                  value:
+                    erro: Data inválida. Use o formato AAAA-MM-DD
+                domingoNaoPermitido:
+                  summary: Tentativa de agendamento em um domingo
+                  value:
+                    erro: Não são permitidas consultas aos domingos
+                horaFormatInvalido:
+                  summary: Formato de hora incorreto
+                  value:
+                    erro: Hora inválida. Use o formato HH:MM
+        '404':
+          description: Pet ou Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                petNaoEncontrado:
+                  summary: Pet não encontrado
+                  value:
+                    erro: Pet não encontrado
+                vetNaoEncontrado:
+                  summary: Veterinário não encontrado
+                  value:
+                    erro: Veterinário não encontrado
+        '409':
+          description: Conflito de agenda ou indisponibilidade de horário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                semDisponibilidade:
+                  summary: Fora do expediente do veterinário
+                  value:
+                    erro: Veterinário não possui disponibilidade neste dia e horário
+                conflitoVeterinario:
+                  summary: Veterinário já possui consulta no horário
+                  value:
+                    erro: Veterinário já possui consulta agendada neste horário
+                conflitoPet:
+                  summary: Pet já possui consulta no horário
+                  value:
+                    erro: Pet já possui consulta agendada neste horário
+        '500':
+          description: Erro interno ao acessar o banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Erro interno ao acessar o banco de dados
+
+    get:
+      tags:
+        - Consultas
+      summary: Listar consultas com filtros opcionais
+      operationId: listarConsultas
+      description: |
+        Retorna a lista de consultas cadastradas, ordenadas cronologicamente por data, hora e ID.
+        Permite filtragem opcional por `pet_id`, `veterinario_id`, `data` e `status`.
+      security: []
+      parameters:
+        - name: pet_id
+          in: query
+          required: false
+          description: Filtrar consultas por ID do pet
+          schema:
+            type: integer
+          example: 1
+        - name: veterinario_id
+          in: query
+          required: false
+          description: Filtrar consultas por ID do veterinário
+          schema:
+            type: integer
+          example: 1
+        - name: data
+          in: query
+          required: false
+          description: Filtrar consultas por data (formato AAAA-MM-DD)
+          schema:
+            type: string
+            format: date
+          example: "2026-11-10"
+        - name: status
+          in: query
+          required: false
+          description: Filtrar consultas por status (insensível a maiúsculas/minúsculas)
+          schema:
+            type: string
+            enum:
+              - Agendada
+              - Remarcada
+              - Cancelada
+              - Realizada
+          example: Agendada
+      responses:
+        '200':
+          description: Lista de consultas retornada com sucesso.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Consulta'
+              example:
+                - id: 1
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "09:00"
+                  duracao_minutos: 30
+                  hora_fim: "09:30"
+                  motivo: Consulta de rotina
+                  status: Agendada
+                - id: 2
+                  pet_id: 2
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "10:00"
+                  duracao_minutos: 45
+                  hora_fim: "10:45"
+                  motivo: Vacinação anual
+                  status: Remarcada
+        '400':
+          description: Formato de filtro inválido (ex: data fora do padrão AAAA-MM-DD).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Data inválida. Use o formato AAAA-MM-DD
+
+  /consultas/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identificador numérico da consulta
+        schema:
+          type: integer
+          minimum: 1
+        example: 1
+
+    get:
+      tags:
+        - Consultas
+      summary: Buscar consulta por ID
+      operationId: buscarConsulta
+      description: Retorna os dados detalhados de uma consulta específica pelo seu ID.
+      security: []
+      responses:
+        '200':
+          description: Consulta encontrada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consulta'
+              example:
+                id: 1
+                pet_id: 1
+                veterinario_id: 1
+                data: "2026-11-10"
+                hora: "14:00"
+                duracao_minutos: 30
+                hora_fim: "14:30"
+                motivo: Consulta dermatológica
+                status: Agendada
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Consulta não encontrada
+
+    put:
+      tags:
+        - Consultas
+      summary: Atualizar consulta
+      operationId: atualizarConsulta
+      description: |
+        Atualiza dados de uma consulta existente. Permite atualização parcial; campos omitidos mantêm seus valores atuais.
+        
+        Se a data, hora, duração, veterinário ou pet forem modificados, o sistema revalida as regras de disponibilidade e sobreposição de agenda (desconsiderando a própria consulta).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaAtualizacao'
+            examples:
+              alterarHorario:
+                summary: Alterar hora e duração
+                value:
+                  hora: "15:00"
+                  duracao_minutos: 45
+              alterarStatus:
+                summary: Alterar status e motivo
+                value:
+                  status: Realizada
+                  motivo: Consulta finalizada com sucesso
+      responses:
+        '200':
+          description: Consulta atualizada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+              example:
+                mensagem: Consulta atualizada com sucesso
+                consulta:
+                  id: 1
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "15:00"
+                  duracao_minutos: 45
+                  hora_fim: "15:45"
+                  motivo: Consulta finalizada com sucesso
+                  status: Realizada
+        '400':
+          description: Dados inválidos fornecidos para atualização.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                dadosNaoEnviados:
+                  summary: Corpo da requisição vazio
+                  value:
+                    erro: Dados não enviados
+                statusInvalido:
+                  summary: Status não reconhecido
+                  value:
+                    erro: "Status inválido. Use: Agendada, Remarcada, Cancelada, Realizada"
+                duracaoInvalida:
+                  summary: Duração inválida
+                  value:
+                    erro: "duracao_minutos inválida. Use: 30, 45, 60"
+                domingoNaoPermitido:
+                  summary: Tentativa de alterar data para domingo
+                  value:
+                    erro: Não são permitidas consultas aos domingos
+        '404':
+          description: Consulta, Pet ou Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Consulta não encontrada
+        '409':
+          description: Conflito de agenda ou veterinário sem disponibilidade no novo horário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Veterinário já possui consulta agendada neste horário
+        '500':
+          description: Erro interno ao atualizar no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Erro interno ao acessar o banco de dados
+
+    delete:
+      tags:
+        - Consultas
+      summary: Excluir consulta
+      operationId: excluirConsulta
+      description: Remove permanentemente uma consulta do banco de dados.
+      security: []
+      responses:
+        '200':
+          description: Consulta excluída com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+              example:
+                mensagem: Consulta excluída com sucesso
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Consulta não encontrada
+        '500':
+          description: Erro interno ao excluir no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Erro interno ao acessar o banco de dados
+
+  /consultas/{id}/remarcar:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identificador numérico da consulta
+        schema:
+          type: integer
+          minimum: 1
+        example: 1
+
+    patch:
+      tags:
+        - Consultas
+      summary: Remarcar consulta (PATCH)
+      operationId: remarcarConsultaPatch
+      description: |
+        Altera a data e/ou a hora de uma consulta já agendada.
+        
+        - Deve ser informada ao menos a nova `data` ou a nova `hora`.
+        - A duração original em minutos é preservada.
+        - As regras de disponibilidade e sobreposição são revalidadas no novo horário.
+        - O status da consulta passa automaticamente para `Remarcada`.
+        - Consultas já canceladas não podem ser remarcadas.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaRemarcarEntrada'
+            examples:
+              remarcarDataEHora:
+                summary: Remarcar data e hora
+                value:
+                  data: "2026-11-12"
+                  hora: "16:00"
+              remarcarApenasHora:
+                summary: Remarcar apenas a hora
+                value:
+                  hora: "10:30"
+      responses:
+        '200':
+          description: Consulta remarcada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+              example:
+                mensagem: Consulta remarcada com sucesso
+                consulta:
+                  id: 1
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-12"
+                  hora: "16:00"
+                  duracao_minutos: 30
+                  hora_fim: "16:30"
+                  motivo: Consulta de rotina
+                  status: Remarcada
+        '400':
+          description: Dados ausentes ou inválidos para remarcação.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              examples:
+                consultaCancelada:
+                  summary: Consulta cancelada não pode ser remarcada
+                  value:
+                    erro: Não é possível remarcar uma consulta cancelada
+                semDataOuHora:
+                  summary: Nenhuma data ou hora fornecida
+                  value:
+                    erro: Informe ao menos a data ou hora para remarcar
+                domingoNaoPermitido:
+                  summary: Tentativa de remarcar para domingo
+                  value:
+                    erro: Não são permitidas consultas aos domingos
+                dataFormatInvalido:
+                  summary: Data inválida
+                  value:
+                    erro: Data inválida. Use o formato AAAA-MM-DD
+                horaFormatInvalido:
+                  summary: Hora inválida
+                  value:
+                    erro: Hora inválida. Use o formato HH:MM
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Consulta não encontrada
+        '409':
+          description: Conflito de agenda no novo horário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Veterinário não possui disponibilidade neste dia e horário
+        '500':
+          description: Erro interno no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Erro interno ao acessar o banco de dados
+
+    put:
+      tags:
+        - Consultas
+      summary: Remarcar consulta (PUT)
+      operationId: remarcarConsultaPut
+      description: Endpoint alternativo via método PUT com mesmo comportamento do PATCH.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsultaRemarcarEntrada'
+      responses:
+        '200':
+          description: Consulta remarcada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+        '400':
+          description: Dados ausentes ou inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: Conflito de agenda no novo horário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /consultas/{id}/cancelar:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identificador numérico da consulta
+        schema:
+          type: integer
+          minimum: 1
+        example: 1
+
+    patch:
+      tags:
+        - Consultas
+      summary: Cancelar consulta (PATCH)
+      operationId: cancelarConsultaPatch
+      description: |
+        Altera o status da consulta para `Cancelada`, liberando o horário na agenda do veterinário e do pet.
+        
+        Se a consulta já estiver cancelada, uma resposta de erro 400 é retornada.
+      security: []
+      responses:
+        '200':
+          description: Consulta cancelada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+              example:
+                mensagem: Consulta cancelada com sucesso
+                consulta:
+                  id: 1
+                  pet_id: 1
+                  veterinario_id: 1
+                  data: "2026-11-10"
+                  hora: "14:00"
+                  duracao_minutos: 30
+                  hora_fim: "14:30"
+                  motivo: Consulta de rotina
+                  status: Cancelada
+        '400':
+          description: Consulta já cancelada anteriormente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Consulta já está cancelada
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Consulta não encontrada
+        '500':
+          description: Erro interno no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: Erro interno ao acessar o banco de dados
+
+    put:
+      tags:
+        - Consultas
+      summary: Cancelar consulta (PUT)
+      operationId: cancelarConsultaPut
+      description: Endpoint alternativo via método PUT com mesmo comportamento do PATCH.
+      security: []
+      responses:
+        '200':
+          description: Consulta cancelada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+        '400':
+          description: Consulta já se encontra cancelada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    post:
+      tags:
+        - Consultas
+      summary: Cancelar consulta (POST)
+      operationId: cancelarConsultaPost
+      description: Endpoint alternativo via método POST com mesmo comportamento do PATCH.
+      security: []
+      responses:
+        '200':
+          description: Consulta cancelada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaConsulta'
+        '400':
+          description: Consulta já se encontra cancelada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Consulta não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno no banco de dados.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+components:
+  schemas:
+    Consulta:
+      type: object
+      required:
+        - id
+        - pet_id
+        - veterinario_id
+        - data
+        - hora
+        - duracao_minutos
+        - hora_fim
+        - status
+      properties:
+        id:
+          type: integer
+          description: Identificador único da consulta
+          example: 1
+        pet_id:
+          type: integer
+          description: Identificador do pet vinculado
+          example: 1
+        veterinario_id:
+          type: integer
+          description: Identificador do veterinário responsável
+          example: 1
+        data:
+          type: string
+          format: date
+          description: Data da consulta no formato AAAA-MM-DD
+          example: "2026-11-10"
+        hora:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: Horário de início no formato HH:MM
+          example: "14:00"
+        duracao_minutos:
+          type: integer
+          enum: [30, 45, 60]
+          description: Duração estimada da consulta em minutos
+          example: 30
+        hora_fim:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: Horário de término calculado automaticamente no formato HH:MM
+          example: "14:30"
+        motivo:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Motivo ou queixa principal da consulta
+          example: "Consulta de rotina e vacinação"
+        status:
+          type: string
+          enum:
+            - Agendada
+            - Remarcada
+            - Cancelada
+            - Realizada
+          description: Estado atual da consulta na clínica
+          example: "Agendada"
+
+    ConsultaEntrada:
+      type: object
+      additionalProperties: false
+      required:
+        - pet_id
+        - veterinario_id
+        - data
+        - hora
+      properties:
+        pet_id:
+          type: integer
+          minimum: 1
+          description: ID do pet cadastrado
+          example: 1
+        veterinario_id:
+          type: integer
+          minimum: 1
+          description: ID do veterinário cadastrado
+          example: 1
+        data:
+          type: string
+          format: date
+          description: Data da consulta (AAAA-MM-DD). Não são permitidos domingos.
+          example: "2026-11-10"
+        hora:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: Horário de início da consulta (HH:MM)
+          example: "14:00"
+        duracao_minutos:
+          type: integer
+          enum: [30, 45, 60]
+          default: 30
+          description: Duração da consulta em minutos (30, 45 ou 60). Padrão é 30.
+          example: 30
+        motivo:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Motivo opcional da consulta (máximo de 255 caracteres)
+          example: "Consulta de rotina e vacinação"
+
+    ConsultaAtualizacao:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        pet_id:
+          type: integer
+          minimum: 1
+          description: Novo ID do pet
+          example: 1
+        veterinario_id:
+          type: integer
+          minimum: 1
+          description: Novo ID do veterinário
+          example: 1
+        data:
+          type: string
+          format: date
+          description: Nova data da consulta (AAAA-MM-DD). Não são permitidos domingos.
+          example: "2026-11-11"
+        hora:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: Novo horário de início da consulta (HH:MM)
+          example: "15:00"
+        duracao_minutos:
+          type: integer
+          enum: [30, 45, 60]
+          description: Nova duração em minutos (30, 45 ou 60)
+          example: 45
+        motivo:
+          type: string
+          maxLength: 255
+          nullable: true
+          description: Novo motivo da consulta
+          example: "Retorno dermatológico"
+        status:
+          type: string
+          enum:
+            - Agendada
+            - Remarcada
+            - Cancelada
+            - Realizada
+          description: Novo status da consulta
+          example: "Realizada"
+
+    ConsultaRemarcarEntrada:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        data:
+          type: string
+          format: date
+          description: Nova data desejada (AAAA-MM-DD). Não são permitidos domingos.
+          example: "2026-11-12"
+        hora:
+          type: string
+          pattern: '^\d{2}:\d{2}$'
+          description: Novo horário desejado (HH:MM)
+          example: "16:00"
+
+    RespostaConsulta:
+      type: object
+      required:
+        - mensagem
+        - consulta
+      properties:
+        mensagem:
+          type: string
+          description: Mensagem de confirmação da operação
+          example: Consulta agendada com sucesso
+        consulta:
+          $ref: '#/components/schemas/Consulta'
+
+    Mensagem:
+      type: object
+      required:
+        - mensagem
+      properties:
+        mensagem:
+          type: string
+          description: Mensagem informativa de sucesso
+          example: Consulta excluída com sucesso
+
+    Erro:
+      type: object
+      required:
+        - erro
+      properties:
+        erro:
+          type: string
+          description: Detalhes do erro ocorrido
+          example: Consulta não encontrada
