@@ -1,0 +1,511 @@
+openapi: 3.0.3
+
+info:
+  title: API Clínica Veterinária - Usuários e Autenticação
+  version: 1.0.0
+  description: |
+    Documentação dos endpoints de Usuários (tutores) e de Autenticação.
+
+    Fluxo: cadastre o usuário em `POST /usuarios`, faça login em `POST /login`
+    e envie o `access_token` no cabeçalho `Authorization: Bearer <token>` das
+    rotas protegidas. O token vale por 1 hora.
+
+    Cadastro e login são públicos. Cada usuário só acessa a própria conta.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Usuários
+    description: Cadastro e gerenciamento de usuários (tutores)
+  - name: Autenticação
+    description: Login e geração do token de acesso
+
+
+paths:
+  /usuarios:
+    post:
+      tags:
+        - Usuários
+      operationId: cadastrarUsuario
+      summary: Cadastrar usuário
+      description: |
+        Cadastra um novo usuário. Todos os campos são obrigatórios.
+
+        O e-mail é guardado em letras minúsculas e não pode estar em uso.
+        A senha nunca é devolvida pela API.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioEntrada'
+            example:
+              nome: Maria Silva
+              email: maria@email.com
+              telefone: '83999999999'
+              senha: senhaSegura123
+      responses:
+        '201':
+          description: Usuário cadastrado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuarioResposta'
+              example:
+                mensagem: Usuário cadastrado com sucesso
+                usuario:
+                  id: 1
+                  nome: Maria Silva
+                  email: maria@email.com
+                  telefone: '83999999999'
+        '400':
+          $ref: '#/components/responses/DadosInvalidosCadastro'
+        '409':
+          $ref: '#/components/responses/EmailJaCadastrado'
+
+    get:
+      tags:
+        - Usuários
+      operationId: listarUsuarios
+      summary: Listar usuários
+      description: |
+        Lista todos os usuários, ordenados por id. Exige token, e qualquer
+        usuário autenticado vê a lista completa.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de usuários
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Usuario'
+              example:
+                - id: 1
+                  nome: Maria Silva
+                  email: maria@email.com
+                  telefone: '83999999999'
+                - id: 2
+                  nome: João Souza
+                  email: joao@email.com
+                  telefone: '83988888888'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '404':
+          $ref: '#/components/responses/UsuarioNaoEncontrado'
+        '422':
+          $ref: '#/components/responses/TokenInvalido'
+
+  /usuarios/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UsuarioId'
+
+    get:
+      tags:
+        - Usuários
+      operationId: buscarUsuario
+      summary: Buscar usuário por id
+      description: |
+        Retorna os dados do usuário logado. Exige token, e o `id` precisa ser
+        o do próprio usuário. Qualquer outro id retorna `403`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados do usuário
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+              example:
+                id: 1
+                nome: Maria Silva
+                email: maria@email.com
+                telefone: '83999999999'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/UsuarioNaoEncontrado'
+        '422':
+          $ref: '#/components/responses/TokenInvalido'
+
+    put:
+      tags:
+        - Usuários
+      operationId: atualizarUsuario
+      summary: Atualizar usuário
+      description: |
+        Atualiza o usuário logado. Exige token, e o `id` precisa ser o do
+        próprio usuário.
+
+        Envie só os campos que deseja alterar (`nome`, `email`, `telefone`,
+        `senha`), pelo menos um. Outros campos são ignorados.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioAtualizacao'
+            example:
+              nome: Maria Silva Santos
+      responses:
+        '200':
+          description: Usuário atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsuarioResposta'
+              example:
+                mensagem: Usuário atualizado com sucesso
+                usuario:
+                  id: 1
+                  nome: Maria Silva Santos
+                  email: maria@email.com
+                  telefone: '83999999999'
+        '400':
+          $ref: '#/components/responses/DadosInvalidosAtualizacao'
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/UsuarioNaoEncontrado'
+        '409':
+          $ref: '#/components/responses/EmailJaCadastrado'
+        '422':
+          $ref: '#/components/responses/TokenInvalido'
+
+    delete:
+      tags:
+        - Usuários
+      operationId: excluirUsuario
+      summary: Excluir usuário
+      description: |
+        Exclui o usuário logado. Exige token, e o `id` precisa ser o do
+        próprio usuário.
+
+        **Atenção:** os pets do usuário e as consultas desses pets também são
+        excluídos (exclusão em cascata).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Usuário excluído com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+              example:
+                mensagem: Usuário excluído com sucesso
+        '401':
+          $ref: '#/components/responses/NaoAutenticado'
+        '403':
+          $ref: '#/components/responses/AcessoNegado'
+        '404':
+          $ref: '#/components/responses/UsuarioNaoEncontrado'
+        '422':
+          $ref: '#/components/responses/TokenInvalido'
+
+  /login:
+    post:
+      tags:
+        - Autenticação
+      operationId: loginUsuario
+      summary: Fazer login
+      description: |
+        Autentica o usuário e devolve um token JWT, válido por 1 hora.
+        Depois disso, é preciso fazer login de novo.
+
+        O e-mail não diferencia maiúsculas de minúsculas.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginEntrada'
+            example:
+              email: maria@email.com
+              senha: senhaSegura123
+      responses:
+        '200':
+          description: Login realizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResposta'
+              example:
+                mensagem: Login realizado com sucesso
+                access_token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.exemplo.assinatura
+                usuario:
+                  id: 1
+                  nome: Maria Silva
+                  email: maria@email.com
+                  telefone: '83999999999'
+        '400':
+          description: E-mail ou senha não enviados, ou corpo que não é um JSON válido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: E-mail e senha são obrigatórios
+        '401':
+          description: E-mail ou senha incorretos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+              example:
+                erro: E-mail ou senha inválidos
+
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token obtido em `POST /login`
+
+  parameters:
+    UsuarioId:
+      name: id
+      in: path
+      required: true
+      description: ID do usuário
+      schema:
+        type: integer
+      example: 1
+
+  responses:
+    DadosInvalidosCadastro:
+      description: |
+        Dados inválidos: corpo que não é JSON, campo ausente ou vazio, e-mail
+        fora do formato, senha curta ou campo acima do tamanho máximo
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          examples:
+            json_invalido:
+              summary: Corpo ausente ou que não é um objeto JSON
+              value:
+                erro: Envie um objeto JSON válido
+            campos_obrigatorios:
+              summary: Algum campo obrigatório ausente
+              value:
+                erro: Nome, email, telefone e senha são obrigatórios
+            email_invalido:
+              summary: E-mail fora do formato
+              value:
+                erro: E-mail inválido
+            senha_curta:
+              summary: Senha com menos de 8 caracteres
+              value:
+                erro: A senha deve ter pelo menos 8 caracteres
+
+    DadosInvalidosAtualizacao:
+      description: |
+        Dados inválidos (mesmas regras do cadastro), corpo que não é JSON ou
+        nenhum campo atualizável enviado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          examples:
+            campo_invalido:
+              summary: Campo fora das regras (exemplo)
+              value:
+                erro: A senha deve ter pelo menos 8 caracteres
+            nenhum_campo:
+              summary: Nenhum campo atualizável foi enviado
+              value:
+                erro: Nenhum campo válido para atualizar
+
+    EmailJaCadastrado:
+      description: E-mail já está em uso por outro usuário
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            erro: E-mail já cadastrado
+
+    UsuarioNaoEncontrado:
+      description: Usuário do token não existe mais (conta excluída depois do login)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            erro: Usuário não encontrado
+
+    AcessoNegado:
+      description: O id informado não é o do usuário logado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Erro'
+          example:
+            erro: Acesso negado
+
+    NaoAutenticado:
+      description: Token ausente ou expirado. Esta resposta usa o campo `msg`, e não `erro`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErroToken'
+          examples:
+            sem_token:
+              summary: Cabeçalho Authorization não enviado
+              value:
+                msg: Missing Authorization Header
+            token_expirado:
+              summary: Token com mais de 1 hora
+              value:
+                msg: Token has expired
+
+    TokenInvalido:
+      description: Token malformado ou com assinatura inválida. Usa o campo `msg`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErroToken'
+          example:
+            msg: "Bad Authorization header. Expected 'Authorization: Bearer <JWT>'"
+
+  schemas:
+    Usuario:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          example: Maria Silva
+        email:
+          type: string
+          format: email
+          example: maria@email.com
+        telefone:
+          type: string
+          example: '83999999999'
+
+    UsuarioEntrada:
+      type: object
+      required:
+        - nome
+        - email
+        - telefone
+        - senha
+      properties:
+        nome:
+          type: string
+          maxLength: 100
+          example: Maria Silva
+        email:
+          type: string
+          format: email
+          maxLength: 120
+          description: Precisa ser único. É guardado em letras minúsculas.
+          example: maria@email.com
+        telefone:
+          type: string
+          maxLength: 20
+          example: '83999999999'
+        senha:
+          type: string
+          format: password
+          minLength: 8
+          description: Mínimo de 8 caracteres
+          example: senhaSegura123
+
+    UsuarioAtualizacao:
+      type: object
+      description: Envie apenas os campos que deseja alterar.
+      minProperties: 1
+      properties:
+        nome:
+          type: string
+          maxLength: 100
+          example: Maria Silva Santos
+        email:
+          type: string
+          format: email
+          maxLength: 120
+          example: maria.santos@email.com
+        telefone:
+          type: string
+          maxLength: 20
+          example: '83977777777'
+        senha:
+          type: string
+          format: password
+          minLength: 8
+          description: Nova senha (mínimo de 8 caracteres)
+          example: novaSenha456
+
+    UsuarioResposta:
+      type: object
+      properties:
+        mensagem:
+          type: string
+        usuario:
+          $ref: '#/components/schemas/Usuario'
+
+    LoginEntrada:
+      type: object
+      required:
+        - email
+        - senha
+      properties:
+        email:
+          type: string
+          format: email
+          example: maria@email.com
+        senha:
+          type: string
+          format: password
+          example: senhaSegura123
+
+    LoginResposta:
+      type: object
+      properties:
+        mensagem:
+          type: string
+          example: Login realizado com sucesso
+        access_token:
+          type: string
+          description: Token JWT, válido por 1 hora
+        usuario:
+          $ref: '#/components/schemas/Usuario'
+
+    Mensagem:
+      type: object
+      properties:
+        mensagem:
+          type: string
+          example: Usuário excluído com sucesso
+
+    Erro:
+      type: object
+      properties:
+        erro:
+          type: string
+
+    ErroToken:
+      type: object
+      properties:
+        msg:
+          type: string
