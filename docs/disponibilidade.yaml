@@ -1,0 +1,379 @@
+﻿openapi: 3.0.3
+
+info:
+  title: API Clínica Veterinária - Módulo de Disponibilidade
+  version: 1.0.0
+  description: Documentação das operações de gerenciamento e verificação de disponibilidades dos veterinários.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Disponibilidade
+    description: Operações de gerenciamento dos horários de atendimento dos veterinários.
+
+paths:
+  /disponibilidade:
+    post:
+      tags:
+        - Disponibilidade
+      summary: Cadastrar disponibilidade
+      operationId: cadastrarDisponibilidade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisponibilidadeEntrada'
+            example:
+              veterinario_id: 1
+              dia_semana: segunda
+              hora_inicio: "08:00"
+              hora_fim: "12:00"
+      responses:
+        '201':
+          description: Disponibilidade cadastrada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaDisponibilidade'
+        '400':
+          description: Dados ausentes ou inválidos. Não é permitido cadastrar disponibilidade aos domingos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: O horário informado se sobrepõe a outra disponibilidade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao cadastrar disponibilidade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    get:
+      tags:
+        - Disponibilidade
+      summary: Listar disponibilidades
+      operationId: listarDisponibilidades
+      parameters:
+        - name: veterinario_id
+          in: query
+          required: false
+          description: Filtra as disponibilidades pelo identificador do veterinário.
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Lista de disponibilidades retornada com sucesso.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Disponibilidade'
+
+  /disponibilidade/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identificador da disponibilidade.
+        schema:
+          type: integer
+          minimum: 1
+        example: 1
+
+    get:
+      tags:
+        - Disponibilidade
+      summary: Buscar disponibilidade por ID
+      operationId: buscarDisponibilidade
+      responses:
+        '200':
+          description: Disponibilidade encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Disponibilidade'
+        '404':
+          description: Disponibilidade não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    put:
+      tags:
+        - Disponibilidade
+      summary: Atualizar disponibilidade
+      description: Permite atualizar parcialmente os dados da disponibilidade. Os campos não enviados mantêm os valores atuais.
+      operationId: atualizarDisponibilidade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisponibilidadeAtualizacao'
+            example:
+              hora_inicio: "09:00"
+              hora_fim: "13:00"
+      responses:
+        '200':
+          description: Disponibilidade atualizada com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaDisponibilidade'
+        '400':
+          description: Dados inválidos ou objeto JSON vazio.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Disponibilidade ou veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: O horário informado se sobrepõe a outra disponibilidade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao atualizar disponibilidade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    delete:
+      tags:
+        - Disponibilidade
+      summary: Excluir disponibilidade
+      operationId: excluirDisponibilidade
+      responses:
+        '200':
+          description: Disponibilidade excluída com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+        '404':
+          description: Disponibilidade não encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao excluir disponibilidade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /disponibilidade/verificar:
+    get:
+      tags:
+        - Disponibilidade
+      summary: Verificar disponibilidade de horário
+      description: Verifica se o veterinário pode atender no horário informado, considerando a duração da consulta e conflitos com consultas existentes.
+      operationId: verificarDisponibilidade
+      parameters:
+        - name: veterinario_id
+          in: query
+          required: true
+          description: Identificador do veterinário.
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+        - name: data
+          in: query
+          required: true
+          description: Data da consulta no formato AAAA-MM-DD.
+          schema:
+            type: string
+            format: date
+          example: "2026-11-23"
+        - name: hora
+          in: query
+          required: true
+          description: Horário de início no formato HH:MM.
+          schema:
+            type: string
+            example: "09:00"
+        - name: duracao_minutos
+          in: query
+          required: false
+          description: Duração da consulta em minutos. Quando omitida, utiliza 30 minutos.
+          schema:
+            type: integer
+            enum: [30, 45, 60]
+            default: 30
+          example: 45
+      responses:
+        '200':
+          description: Resultado da verificação. A resposta indica se o horário está disponível ou informa o motivo da indisponibilidade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoVerificacao'
+              examples:
+                disponivel:
+                  summary: Horário disponível
+                  value:
+                    disponivel: true
+                    mensagem: Horário disponível
+                foraExpediente:
+                  summary: Fora do expediente
+                  value:
+                    disponivel: false
+                    mensagem: Consulta fora do expediente disponível
+                conflito:
+                  summary: Conflito com outra consulta
+                  value:
+                    disponivel: false
+                    mensagem: Veterinário já possui consulta neste horário
+        '400':
+          description: Parâmetros ausentes ou inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+components:
+  schemas:
+    Disponibilidade:
+      type: object
+      required:
+        - id
+        - veterinario_id
+        - dia_semana
+        - hora_inicio
+        - hora_fim
+      properties:
+        id:
+          type: integer
+          example: 1
+        veterinario_id:
+          type: integer
+          example: 1
+        dia_semana:
+          type: string
+          enum: [segunda, terca, quarta, quinta, sexta, sabado]
+          example: segunda
+        hora_inicio:
+          type: string
+          example: "08:00"
+        hora_fim:
+          type: string
+          example: "12:00"
+
+    DisponibilidadeEntrada:
+      type: object
+      required:
+        - veterinario_id
+        - dia_semana
+        - hora_inicio
+        - hora_fim
+      properties:
+        veterinario_id:
+          type: integer
+          minimum: 1
+          example: 1
+        dia_semana:
+          type: string
+          description: Nome do dia da semana. O sistema normaliza acentos e espaços. Domingo não é permitido.
+          enum: [segunda, terca, quarta, quinta, sexta, sabado]
+          example: segunda
+        hora_inicio:
+          type: string
+          example: "08:00"
+        hora_fim:
+          type: string
+          example: "12:00"
+
+    DisponibilidadeAtualizacao:
+      type: object
+      minProperties: 1
+      properties:
+        veterinario_id:
+          type: integer
+          minimum: 1
+          example: 1
+        dia_semana:
+          type: string
+          enum: [segunda, terca, quarta, quinta, sexta, sabado]
+          example: terca
+        hora_inicio:
+          type: string
+          example: "09:00"
+        hora_fim:
+          type: string
+          example: "13:00"
+
+    RespostaDisponibilidade:
+      type: object
+      required:
+        - mensagem
+        - disponibilidade
+      properties:
+        mensagem:
+          type: string
+          example: Disponibilidade cadastrada com sucesso
+        disponibilidade:
+          $ref: '#/components/schemas/Disponibilidade'
+
+    ResultadoVerificacao:
+      type: object
+      required:
+        - disponivel
+        - mensagem
+      properties:
+        disponivel:
+          type: boolean
+          example: true
+        mensagem:
+          type: string
+          example: Horário disponível
+
+    Mensagem:
+      type: object
+      required:
+        - mensagem
+      properties:
+        mensagem:
+          type: string
+          example: Disponibilidade excluída com sucesso
+
+    Erro:
+      type: object
+      required:
+        - erro
+      properties:
+        erro:
+          type: string
+          example: Disponibilidade não encontrada

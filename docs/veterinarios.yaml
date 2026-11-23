@@ -1,0 +1,283 @@
+﻿openapi: 3.0.3
+
+info:
+  title: API Clínica Veterinária - Módulo de Veterinários
+  version: 1.0.0
+  description: Documentação das operações de gerenciamento de veterinários.
+
+servers:
+  - url: http://127.0.0.1:5000
+    description: Servidor local de desenvolvimento
+
+tags:
+  - name: Veterinários
+    description: Operações de gerenciamento dos veterinários da clínica.
+
+paths:
+  /veterinarios:
+    post:
+      tags:
+        - Veterinários
+      summary: Cadastrar veterinário
+      operationId: cadastrarVeterinario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeterinarioEntrada'
+            example:
+              nome: Ana Silva
+              especialidade: Clínica Geral
+      responses:
+        '201':
+          description: Veterinário cadastrado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaVeterinario'
+        '400':
+          description: Dados ausentes ou inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: Conflito de integridade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao cadastrar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    get:
+      tags:
+        - Veterinários
+      summary: Listar veterinários
+      operationId: listarVeterinarios
+      responses:
+        '200':
+          description: Lista de veterinários retornada com sucesso.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Veterinario'
+        '500':
+          description: Erro interno ao listar veterinários.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+  /veterinarios/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identificador numérico do veterinário.
+        schema:
+          type: integer
+          minimum: 1
+        example: 1
+
+    get:
+      tags:
+        - Veterinários
+      summary: Buscar veterinário por ID
+      operationId: buscarVeterinario
+      responses:
+        '200':
+          description: Veterinário encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Veterinario'
+        '404':
+          description: Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao buscar veterinário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    put:
+      tags:
+        - Veterinários
+      summary: Atualizar veterinário
+      description: Permite atualização parcial, enviando nome, especialidade ou ambos.
+      operationId: atualizarVeterinario
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VeterinarioAtualizacao'
+            examples:
+              atualizarNome:
+                summary: Atualizar somente o nome
+                value:
+                  nome: Ana Souza
+              atualizarEspecialidade:
+                summary: Atualizar somente a especialidade
+                value:
+                  especialidade: Dermatologia
+      responses:
+        '200':
+          description: Veterinário atualizado com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespostaVeterinario'
+        '400':
+          description: Dados ausentes ou inválidos.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '404':
+          description: Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: Conflito de integridade.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao atualizar.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+    delete:
+      tags:
+        - Veterinários
+      summary: Excluir veterinário
+      description: A exclusão é impedida quando existem consultas ou disponibilidades vinculadas.
+      operationId: excluirVeterinario
+      responses:
+        '200':
+          description: Veterinário excluído com sucesso.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensagem'
+        '404':
+          description: Veterinário não encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '409':
+          description: Existem registros vinculados ao veterinário.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+        '500':
+          description: Erro interno ao excluir.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Erro'
+
+components:
+  schemas:
+    Veterinario:
+      type: object
+      required:
+        - id
+        - nome
+        - especialidade
+      properties:
+        id:
+          type: integer
+          example: 1
+        nome:
+          type: string
+          maxLength: 100
+          example: Ana Silva
+        especialidade:
+          type: string
+          maxLength: 60
+          example: Clínica Geral
+
+    VeterinarioEntrada:
+      type: object
+      additionalProperties: false
+      required:
+        - nome
+        - especialidade
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Ana Silva
+        especialidade:
+          type: string
+          minLength: 1
+          maxLength: 60
+          example: Clínica Geral
+
+    VeterinarioAtualizacao:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        nome:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Ana Souza
+        especialidade:
+          type: string
+          minLength: 1
+          maxLength: 60
+          example: Dermatologia
+
+    RespostaVeterinario:
+      type: object
+      required:
+        - mensagem
+        - veterinario
+      properties:
+        mensagem:
+          type: string
+          example: Veterinário cadastrado com sucesso.
+        veterinario:
+          $ref: '#/components/schemas/Veterinario'
+
+    Mensagem:
+      type: object
+      required:
+        - mensagem
+      properties:
+        mensagem:
+          type: string
+          example: Veterinário excluído com sucesso.
+
+    Erro:
+      type: object
+      required:
+        - erro
+      properties:
+        erro:
+          type: string
+          example: Veterinário não encontrado.
