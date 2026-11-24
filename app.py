@@ -5,6 +5,7 @@ from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from extensions import db, jwt
+from swagger_config import gerar_openapi
 
 from models.usuario import Usuario
 from models.veterinario import Veterinario
@@ -62,6 +63,10 @@ def create_app(config=None):
             nome_arquivo
         )
 
+    @app.get("/docs/openapi.json")
+    def openapi_integrado():
+        return jsonify(gerar_openapi())
+    
     @app.get("/docs/")
     def swagger_ui():
         return """
@@ -78,7 +83,7 @@ def create_app(config=None):
             <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
             <script>
                 SwaggerUIBundle({
-                    url: "/docs/openapi.yaml",
+                    url: "/docs/openapi.json",
                     dom_id: "#swagger-ui"
                 });
             </script>

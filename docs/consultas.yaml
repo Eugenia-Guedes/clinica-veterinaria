@@ -241,7 +241,7 @@ paths:
                   motivo: Vacinação anual
                   status: Remarcada
         '400':
-          description: Formato de filtro inválido (ex: data fora do padrão AAAA-MM-DD).
+          description: "Formato de filtro inválido (ex: data fora do padrão AAAA-MM-DD)."
           content:
             application/json:
               schema:
